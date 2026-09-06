@@ -25,12 +25,18 @@ function main(): void {
 
   const container = buildContainer(config);
   const { persistence, http, nodeEnv, version } = container.config;
+  const { lockout } = container.policies;
 
   console.log('Configuração validada com sucesso.');
   console.log(`  ambiente ......... ${nodeEnv} (versão ${version})`);
   console.log(`  porta HTTP ....... ${String(http.port)}`);
   console.log(`  tabela DynamoDB .. ${persistence.tableName} @ ${persistence.region}`);
   console.log(`  endpoint local ... ${persistence.endpoint ?? '(AWS real)'}`);
+  console.log(
+    `  bloqueio ......... após ${String(lockout.maxAttempts)} falhas, ` +
+      `de ${String(lockout.lockDurationMs(lockout.maxAttempts) / 1000)}s ` +
+      `até ${String(lockout.maxDelayMs / 1000)}s`,
+  );
   console.log('');
   console.log('O servidor HTTP entra em serviço na issue #8.');
 }

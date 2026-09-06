@@ -236,7 +236,9 @@ da issue #10.
 ## Decisões técnicas
 
 As escolhas relevantes estão registradas como ADRs em [`docs/adr/`](docs/adr/),
-cada uma com contexto, alternativas descartadas e consequências.
+cada uma com contexto, alternativas descartadas e consequências. Os códigos de
+erro e quais deles nunca chegam ao cliente estão em
+[`docs/errors.md`](docs/errors.md).
 
 | ADR                                                 | Decisão                                                  |
 | --------------------------------------------------- | -------------------------------------------------------- |

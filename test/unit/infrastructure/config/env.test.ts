@@ -43,6 +43,20 @@ describe('loadConfig', () => {
       expect(captured?.issues.join('\n')).toContain('PORT');
     });
 
+    it('rotula como raiz um problema que não pertence a nenhuma variável', () => {
+      // Acontece quando a própria fonte não é um objeto de ambiente.
+      let captured: EnvValidationError | undefined;
+
+      try {
+        loadConfig(null as unknown as NodeJS.ProcessEnv);
+      } catch (error) {
+        captured = error as EnvValidationError;
+      }
+
+      expect(captured).toBeInstanceOf(EnvValidationError);
+      expect(captured?.issues.join('\n')).toContain('(raiz)');
+    });
+
     it('aponta o arquivo de referência na mensagem de erro', () => {
       expect(() => loadConfig({})).toThrow(/\.env\.example/);
     });
