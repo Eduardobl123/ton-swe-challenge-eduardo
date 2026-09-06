@@ -17,8 +17,11 @@ describe('buildContainer', () => {
     expect(montar({ PORT: '8080' }).config.http.port).toBe(8080);
   });
 
-  it('monta o caso de uso de autenticação', () => {
-    expect(montar().useCases.authenticateUser).toBeDefined();
+  it('monta os casos de uso', () => {
+    const { useCases } = montar();
+
+    expect(useCases.authenticateUser).toBeDefined();
+    expect(useCases.listProducts).toBeDefined();
   });
 
   describe('política de bloqueio', () => {

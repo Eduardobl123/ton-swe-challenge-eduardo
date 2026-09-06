@@ -16,7 +16,13 @@ Paginação por cursor opaco. A resposta traz `nextCursor`, uma string base64url
 que encapsula a `LastEvaluatedKey` do DynamoDB assinada com HMAC, para que um
 cursor forjado seja rejeitado e o formato interno das chaves não vaze.
 
-O `limit` tem padrão 20 e teto 100. A resposta **não** inclui contagem total.
+O `limit` tem padrão 20 e teto 100. Um pedido acima do teto é **ajustado**, não
+recusado: pedir mil itens costuma ser otimismo, não ataque, e devolver cem
+atende melhor que um erro. O ajuste é informado na resposta, e a borda HTTP o
+traduz no cabeçalho `X-Limit-Clamped`, para que o cliente não conclua que
+chegou ao fim da lista ao receber menos do que pediu.
+
+A resposta **não** inclui contagem total.
 
 ## Alternativas consideradas
 
