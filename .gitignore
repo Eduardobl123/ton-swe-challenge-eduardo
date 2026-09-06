@@ -1,0 +1,38 @@
+# dependências
+node_modules/
+
+# build
+dist/
+*.tsbuildinfo
+
+# testes
+coverage/
+.vitest-cache/
+
+# ambiente — nunca commitar segredos
+.env
+.env.*
+!.env.example
+
+# terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+.terraform.lock.hcl
+
+SWE_Challenge-Back-TREM.pdf
+
+# sistema operacional / editores
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# logs
+*.log
+npm-debug.log*

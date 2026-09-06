@@ -1,0 +1,7 @@
+node_modules/
+dist/
+coverage/
+.terraform/
+docs/openapi.json
+*.tfstate
+*.tfstate.*
