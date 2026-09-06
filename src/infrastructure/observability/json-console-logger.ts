@@ -1,6 +1,28 @@
-import type { LogFields, Logger } from '../../domain/ports';
+import type { Clock, LogFields, Logger } from '../../domain/ports';
 
-type Level = 'info' | 'warn' | 'error';
+export type Level = 'info' | 'warn' | 'error';
+
+/**
+ * O `LOG_LEVEL` do ambiente admite seis níveis; a porta `Logger` expõe três.
+ * Níveis mais detalhados que `info` colapsam nele, e `fatal` colapsa em `error`.
+ * O pino (issue #9) passa a honrar os seis.
+ *
+ * Vive aqui, e não no entrypoint, para entrar no relatório de cobertura: é um
+ * mapeamento pequeno e fácil de errar em silêncio.
+ */
+export function minimumLevelFor(
+  configured: 'fatal' | 'error' | 'warn' | 'info' | 'debug' | 'trace',
+): Level {
+  switch (configured) {
+    case 'fatal':
+    case 'error':
+      return 'error';
+    case 'warn':
+      return 'warn';
+    default:
+      return 'info';
+  }
+}
 
 /**
  * Logger estruturado mínimo, escrevendo JSON de uma linha no stdout.
@@ -14,13 +36,27 @@ type Level = 'info' | 'warn' | 'error';
  * No Lambda o stdout é coletado pelo CloudWatch sem agente, então JSON de uma
  * linha já é consultável — texto livre não seria.
  */
+export interface JsonConsoleLoggerOptions {
+  readonly clock: Clock;
+  readonly minimumLevel?: Level;
+  /** Destino da linha. Injetável para que o teste não dependa do stdout. */
+  readonly write?: (line: string) => void;
+}
+
 export class JsonConsoleLogger implements Logger {
-  constructor(
-    private readonly minimumLevel: Level = 'info',
-    private readonly write: (line: string) => void = (line) => {
-      process.stdout.write(`${line}\n`);
-    },
-  ) {}
+  private readonly clock: Clock;
+  private readonly minimumLevel: Level;
+  private readonly write: (line: string) => void;
+
+  constructor({ clock, minimumLevel = 'info', write }: JsonConsoleLoggerOptions) {
+    this.clock = clock;
+    this.minimumLevel = minimumLevel;
+    this.write =
+      write ??
+      ((line): void => {
+        process.stdout.write(`${line}\n`);
+      });
+  }
 
   public info(event: string, fields: LogFields = {}): void {
     this.emit('info', event, fields);
@@ -46,7 +82,7 @@ export class JsonConsoleLogger implements Logger {
     this.write(
       JSON.stringify({
         level,
-        time: new Date().toISOString(),
+        time: this.clock.now().toISOString(),
         event,
         ...Object.fromEntries(defined),
       }),

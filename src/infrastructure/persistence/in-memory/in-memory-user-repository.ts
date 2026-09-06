@@ -1,16 +1,16 @@
 import { ConcurrencyError } from '../../../domain/errors';
 import { User } from '../../../domain/entities';
-import type { Email } from '../../../domain/value-objects';
+import type { Email, LockoutPolicy } from '../../../domain/value-objects';
 import type { UserRepository } from '../../../domain/ports';
 
 /**
  * Repositório de usuários em memória.
  *
  * Serve ao desenvolvimento local sem Docker e aos testes. Não é um esboço: ele
- * reproduz o **contrato** do adaptador DynamoDB, incluindo o controle de
- * concorrência otimista. Um duplo que sempre aceita a escrita esconderia
- * justamente o caminho de erro que o caso de uso precisa tratar, e o defeito só
- * apareceria contra o banco de verdade.
+ * reproduz o **contrato** do adaptador DynamoDB, incluindo a atomicidade do
+ * contador de falhas e o controle de concorrência otimista da escrita comum. Um
+ * duplo que sempre aceita a escrita esconderia justamente os caminhos que o caso
+ * de uso precisa tratar, e o defeito só apareceria contra o banco de verdade.
  */
 export class InMemoryUserRepository implements UserRepository {
   private readonly byId = new Map<string, User>();
@@ -29,6 +29,22 @@ export class InMemoryUserRepository implements UserRepository {
     }
 
     return Promise.resolve(null);
+  }
+
+  /**
+   * Incrementa a partir do valor gravado, e não do que veio na instância.
+   *
+   * Não há `await` entre a leitura e a escrita, então nenhuma outra tarefa corre
+   * no meio: é o equivalente, neste adaptador, ao `ADD` atômico do DynamoDB.
+   */
+  public registerFailedLogin(user: User, now: Date, policy: LockoutPolicy): Promise<User> {
+    const current = this.byId.get(user.id) ?? user;
+    const updated = current.recordFailedLogin(now, policy);
+    const stored = User.create({ ...updated.toProps(), version: current.version + 1 });
+
+    this.byId.set(stored.id, stored);
+
+    return Promise.resolve(stored);
   }
 
   /**

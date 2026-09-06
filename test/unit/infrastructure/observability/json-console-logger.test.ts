@@ -1,12 +1,20 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { JsonConsoleLogger } from '../../../../src/infrastructure/observability';
+import { JsonConsoleLogger, minimumLevelFor } from '../../../../src/infrastructure/observability';
+import { FixedClock } from '../../../support/fakes';
+
+const AGORA = new Date('2026-09-06T12:00:00.000Z');
 
 const capturar = (
-  level: 'info' | 'warn' | 'error' = 'info',
+  minimumLevel: 'info' | 'warn' | 'error' = 'info',
 ): { logger: JsonConsoleLogger; linhas: string[] } => {
   const linhas: string[] = [];
+  const logger = new JsonConsoleLogger({
+    clock: new FixedClock(AGORA),
+    minimumLevel,
+    write: (linha) => linhas.push(linha),
+  });
 
-  return { logger: new JsonConsoleLogger(level, (linha) => linhas.push(linha)), linhas };
+  return { logger, linhas };
 };
 
 describe('JsonConsoleLogger', () => {
@@ -18,7 +26,9 @@ describe('JsonConsoleLogger', () => {
     // No Lambda o stdout é o que o CloudWatch coleta, sem agente nenhum.
     const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
 
-    new JsonConsoleLogger().info('auth.login.succeeded', { userId: 'user-1' });
+    new JsonConsoleLogger({ clock: new FixedClock(AGORA) }).info('auth.login.succeeded', {
+      userId: 'user-1',
+    });
 
     expect(stdout).toHaveBeenCalledOnce();
     expect(stdout.mock.calls[0]?.[0]).toMatch(/^\{.*\}\n$/);
@@ -38,12 +48,12 @@ describe('JsonConsoleLogger', () => {
     });
   });
 
-  it('carimba o instante do evento', () => {
+  it('carimba o evento com o instante do relógio injetado', () => {
     const { logger, linhas } = capturar();
 
     logger.info('evento');
 
-    expect(Date.parse((JSON.parse(linhas[0]!) as { time: string }).time)).not.toBeNaN();
+    expect((JSON.parse(linhas[0]!) as { time: string }).time).toBe(AGORA.toISOString());
   });
 
   it.each(['info', 'warn', 'error'] as const)('registra o nível %s', (nivel) => {
@@ -91,6 +101,19 @@ describe('JsonConsoleLogger', () => {
       logger.error('c');
 
       expect(linhas).toHaveLength(1);
+    });
+  });
+
+  describe('minimumLevelFor', () => {
+    it.each([
+      ['fatal', 'error'],
+      ['error', 'error'],
+      ['warn', 'warn'],
+      ['info', 'info'],
+      ['debug', 'info'],
+      ['trace', 'info'],
+    ] as const)('mapeia %s do ambiente para %s da porta', (configurado, esperado) => {
+      expect(minimumLevelFor(configurado)).toBe(esperado);
     });
   });
 });

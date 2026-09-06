@@ -3,6 +3,9 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     globals: false,
+    // Um espião que sobrevive ao teste que o instalou é fonte clássica de
+    // falha intermitente, e a ordem de execução esconde o problema.
+    restoreMocks: true,
     environment: 'node',
     include: ['test/**/*.test.ts'],
     coverage: {

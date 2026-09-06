@@ -164,26 +164,12 @@ export class AuthenticateUser {
     now: Date,
     ipAddress: string | undefined,
   ): Promise<void> {
-    const updated = user.recordFailedLogin(now, this.deps.lockoutPolicy);
-
-    try {
-      await this.deps.users.save(updated);
-    } catch (error) {
-      if (!(error instanceof ConcurrencyError)) {
-        throw error;
-      }
-
-      // Perder a corrida significa que outra tentativa gravou primeiro, e o
-      // contador dela já conta esta janela de ataque. Repetir a escrita seria
-      // pior: transformaria tentativas simultâneas em trabalho extra no banco
-      // exatamente quando alguém está tentando adivinhar a senha. A resposta ao
-      // cliente é a mesma de qualquer outra falha.
-      this.deps.logger.warn('auth.login.concurrent_update', {
-        userId: user.id,
-        ipAddress,
-      });
-      return;
-    }
+    // O incremento é feito pelo repositório, em uma operação atômica, e não por
+    // uma leitura seguida de escrita aqui. Contar do lado do caso de uso
+    // permitiria que tentativas simultâneas lessem o mesmo total e gravassem por
+    // cima umas das outras — cem em paralelo contariam como uma, e o bloqueio
+    // deixaria de valer contra ataque automatizado.
+    const updated = await this.deps.users.registerFailedLogin(user, now, this.deps.lockoutPolicy);
 
     this.deps.logger.info('auth.login.failed', {
       reason: 'wrong_password',

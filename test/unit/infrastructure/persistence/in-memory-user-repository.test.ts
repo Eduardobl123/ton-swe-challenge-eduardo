@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { InMemoryUserRepository } from '../../../../src/infrastructure/persistence/in-memory/in-memory-user-repository';
 import { User } from '../../../../src/domain/entities';
 import { ConcurrencyError } from '../../../../src/domain/errors';
-import { Email, PasswordHash } from '../../../../src/domain/value-objects';
+import { Email, LockoutPolicy, PasswordHash } from '../../../../src/domain/value-objects';
 
 const AGORA = new Date('2026-09-06T12:00:00.000Z');
 
@@ -70,5 +70,65 @@ describe('InMemoryUserRepository', () => {
 
     expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(resultados.filter((r) => r.status === 'rejected')).toHaveLength(1);
+  });
+
+  describe('registerFailedLogin', () => {
+    const AGORA = new Date('2026-09-06T12:00:00.000Z');
+    const policy = LockoutPolicy.create({
+      maxAttempts: 5,
+      baseDelayMs: 30_000,
+      maxDelayMs: 900_000,
+    });
+
+    it('incrementa a partir do valor gravado, e não do que veio na instância', async () => {
+      // É o que faz o contador sobreviver a tentativas simultâneas: cada
+      // chamada soma sobre o total atual, sem depender de uma leitura anterior.
+      const repo = new InMemoryUserRepository([usuario()]);
+      const desatualizado = usuario({ failedLoginAttempts: 0 });
+
+      await repo.registerFailedLogin(desatualizado, AGORA, policy);
+      const segundo = await repo.registerFailedLogin(desatualizado, AGORA, policy);
+
+      expect(segundo.failedLoginAttempts).toBe(2);
+    });
+
+    it('bloqueia ao atingir o limite da política', async () => {
+      const repo = new InMemoryUserRepository([usuario()]);
+      let atual = usuario();
+
+      for (let i = 0; i < 5; i += 1) {
+        atual = await repo.registerFailedLogin(atual, AGORA, policy);
+      }
+
+      expect(atual.isLocked(AGORA)).toBe(true);
+    });
+
+    it('conta cem tentativas simultâneas como cem', async () => {
+      const repo = new InMemoryUserRepository([usuario()]);
+
+      await Promise.all(
+        Array.from({ length: 100 }, () => repo.registerFailedLogin(usuario(), AGORA, policy)),
+      );
+
+      const salvo = await repo.findByEmail(Email.create('maria@ton.com.br'));
+      expect(salvo?.failedLoginAttempts).toBe(100);
+    });
+
+    it('aceita usuário ainda não gravado', async () => {
+      const repo = new InMemoryUserRepository();
+
+      const resultado = await repo.registerFailedLogin(usuario(), AGORA, policy);
+
+      expect(resultado.failedLoginAttempts).toBe(1);
+      await expect(repo.findByEmail(Email.create('maria@ton.com.br'))).resolves.not.toBeNull();
+    });
+
+    it('avança a versão a cada contabilização', async () => {
+      const repo = new InMemoryUserRepository([usuario()]);
+
+      const resultado = await repo.registerFailedLogin(usuario(), AGORA, policy);
+
+      expect(resultado.version).toBe(2);
+    });
   });
 });

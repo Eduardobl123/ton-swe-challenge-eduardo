@@ -82,6 +82,7 @@ export function buildContainer(config: AppConfig, logger: Logger): Container {
     secret: config.auth.jwtSecret,
     issuer: config.auth.issuer,
     audience: config.auth.audience,
+    clock,
   });
 
   // A persistência real chega na issue #7. Até lá o repositório em memória

@@ -229,22 +229,37 @@ describe('AuthenticateUser', () => {
     });
   });
 
-  describe('escrita concorrente', () => {
-    const repositorioComConflito = (falhaNoSave: boolean): UserRepository => ({
-      findByEmail: () => Promise.resolve(usuarioDemo()),
-      save: () =>
-        falhaNoSave
-          ? Promise.reject(new ConcurrencyError('User', 'user-1'))
-          : Promise.resolve(undefined),
+  describe('concorrência', () => {
+    it('bloqueia a conta mesmo com as tentativas disparadas em paralelo', async () => {
+      // Regressão do achado P1 da revisão. Contar do lado do caso de uso fazia
+      // cem tentativas simultâneas valerem por uma, e o bloqueio deixava de
+      // existir contra ataque automatizado.
+      await Promise.all(
+        Array.from({ length: 100 }, () =>
+          c.useCase
+            .execute({ email: EMAIL, password: 'errada', ipAddress: undefined })
+            .catch(() => undefined),
+        ),
+      );
+
+      const usuario = await c.users.findByEmail(Email.create(EMAIL));
+      expect(usuario?.failedLoginAttempts).toBeGreaterThanOrEqual(5);
+      expect(usuario?.isLocked(AGORA)).toBe(true);
     });
 
-    it('não repete a escrita e responde com o erro genérico', async () => {
-      const cenario = montar({ users: repositorioComConflito(true) });
+    it('emite auth.login.failed em toda tentativa malsucedida', async () => {
+      // Sem isso, um alerta baseado nesse evento ficaria cego justamente durante
+      // um ataque concorrente.
+      await Promise.all(
+        Array.from({ length: 4 }, () =>
+          c.useCase
+            .execute({ email: EMAIL, password: 'errada', ipAddress: undefined })
+            .catch(() => undefined),
+        ),
+      );
 
-      await expect(
-        cenario.useCase.execute({ email: EMAIL, password: 'errada', ipAddress: undefined }),
-      ).rejects.toBeInstanceOf(InvalidCredentialsError);
-      expect(cenario.logger.events()).toContain('auth.login.concurrent_update');
+      const falhas = c.logger.records.filter((r) => r.event === 'auth.login.failed');
+      expect(falhas).toHaveLength(4);
     });
 
     it('conclui o login quando o conflito ocorre ao zerar o contador', async () => {
@@ -253,6 +268,7 @@ describe('AuthenticateUser', () => {
       const users: UserRepository = {
         findByEmail: () =>
           Promise.resolve(User.create({ ...usuarioDemo().toProps(), failedLoginAttempts: 2 })),
+        registerFailedLogin: () => Promise.reject(new Error('não usado')),
         save: () => Promise.reject(new ConcurrencyError('User', 'user-1')),
       };
       const cenario = montar({ users });
@@ -268,6 +284,7 @@ describe('AuthenticateUser', () => {
       const users: UserRepository = {
         findByEmail: () =>
           Promise.resolve(User.create({ ...usuarioDemo().toProps(), failedLoginAttempts: 2 })),
+        registerFailedLogin: () => Promise.reject(new Error('não usado')),
         save: () => Promise.reject(new Error('DynamoDB indisponível')),
       };
       const cenario = montar({ users });
@@ -277,10 +294,11 @@ describe('AuthenticateUser', () => {
       ).rejects.toThrow('DynamoDB indisponível');
     });
 
-    it('propaga falha de persistência que não seja concorrência', async () => {
+    it('propaga falha do contador de tentativas', async () => {
       const users: UserRepository = {
         findByEmail: () => Promise.resolve(usuarioDemo()),
-        save: () => Promise.reject(new Error('DynamoDB indisponível')),
+        registerFailedLogin: () => Promise.reject(new Error('DynamoDB indisponível')),
+        save: () => Promise.resolve(undefined),
       };
       const cenario = montar({ users });
 

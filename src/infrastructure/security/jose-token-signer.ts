@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { SignJWT, jwtVerify } from 'jose';
-import type { AccessTokenClaims, AccessTokenInput, TokenSigner } from '../../domain/ports';
+import type { AccessTokenClaims, AccessTokenInput, Clock, TokenSigner } from '../../domain/ports';
 
 /**
  * Algoritmo fixo, nunca lido do token.
@@ -16,6 +16,14 @@ export interface JoseTokenSignerOptions {
   readonly secret: string;
   readonly issuer: string;
   readonly audience: string;
+  /**
+   * Fonte de tempo usada para calcular `iat` e `exp`.
+   *
+   * Ler o relógio da parede aqui tornaria a validade do token intestável sem
+   * esperar de verdade — os testes ponta a ponta (issue #13) precisam expirar
+   * um token avançando o relógio, não forjando um.
+   */
+  readonly clock: Clock;
 }
 
 /**
@@ -29,15 +37,17 @@ export class JoseTokenSigner implements TokenSigner {
   private readonly secret: Uint8Array;
   private readonly issuer: string;
   private readonly audience: string;
+  private readonly clock: Clock;
 
-  constructor({ secret, issuer, audience }: JoseTokenSignerOptions) {
+  constructor({ secret, issuer, audience, clock }: JoseTokenSignerOptions) {
     this.secret = new TextEncoder().encode(secret);
     this.issuer = issuer;
     this.audience = audience;
+    this.clock = clock;
   }
 
   public async sign({ subject }: AccessTokenInput, ttlSeconds: number): Promise<string> {
-    const issuedAt = Math.floor(Date.now() / 1000);
+    const issuedAt = Math.floor(this.clock.now().getTime() / 1000);
 
     return (
       new SignJWT()
@@ -64,6 +74,10 @@ export class JoseTokenSigner implements TokenSigner {
       issuer: this.issuer,
       audience: this.audience,
       algorithms: [ALGORITHM],
+      // A validade também é conferida contra o relógio injetado. Sem isto,
+      // emitir pelo relógio de teste e verificar pelo da parede daria resultados
+      // incoerentes, e a expiração continuaria intestável.
+      currentDate: this.clock.now(),
     });
 
     const { sub, jti, iat, exp } = payload;

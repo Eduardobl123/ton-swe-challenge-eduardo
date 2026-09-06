@@ -1,9 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { SignJWT } from 'jose';
 import { JoseTokenSigner } from '../../../../src/infrastructure/security';
+import { FixedClock } from '../../../support/fakes';
 
 const SECRET = 'um-segredo-de-teste-com-mais-de-trinta-e-dois-caracteres';
-const OPTIONS = { secret: SECRET, issuer: 'ton-swe-challenge', audience: 'ton-swe-challenge-api' };
+const AGORA = new Date('2026-09-06T12:00:00.000Z');
+const clock = new FixedClock(AGORA);
+const OPTIONS = {
+  secret: SECRET,
+  issuer: 'ton-swe-challenge',
+  audience: 'ton-swe-challenge-api',
+  clock,
+};
 
 const signer = new JoseTokenSigner(OPTIONS);
 const key = new TextEncoder().encode(SECRET);
@@ -27,6 +35,26 @@ describe('JoseTokenSigner', () => {
       ]);
 
       expect(a.jti).not.toBe(b.jti);
+    });
+
+    it('expira quando o relógio avança além da validade', async () => {
+      // O emissor lê a porta Clock, e não o relógio da parede: é o que permite
+      // aos testes ponta a ponta (issue #13) expirar um token avançando o
+      // tempo, em vez de forjar um.
+      const relogio = new FixedClock(AGORA);
+      const emissor = new JoseTokenSigner({ ...OPTIONS, clock: relogio });
+      const token = await emissor.sign({ subject: 'user-1' }, 900);
+
+      await expect(emissor.verify(token)).resolves.toMatchObject({ sub: 'user-1' });
+
+      relogio.advanceMs(901_000);
+      await expect(emissor.verify(token)).rejects.toThrow();
+    });
+
+    it('carimba a emissão com o instante do relógio injetado', async () => {
+      const claims = await signer.verify(await signer.sign({ subject: 'user-1' }, 900));
+
+      expect(claims.iat).toBe(Math.floor(AGORA.getTime() / 1000));
     });
 
     it('respeita a validade informada', async () => {
