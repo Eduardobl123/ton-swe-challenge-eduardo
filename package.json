@@ -26,6 +26,8 @@
     "prepare": "husky"
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.2.0",
+    "jose": "^6.2.12",
     "zod": "^4.5.4"
   },
   "devDependencies": {

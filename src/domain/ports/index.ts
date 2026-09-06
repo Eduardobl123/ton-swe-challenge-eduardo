@@ -1,5 +1,6 @@
 export type { Clock } from './clock';
 export type { IdGenerator } from './id-generator';
+export type { LogFields, Logger } from './logger';
 export type { PasswordHasher } from './password-hasher';
 export type { RateLimitHit, RateLimiterStore } from './rate-limiter-store';
 export type { ListActiveProductsQuery, ProductPage, ProductRepository } from './product-repository';

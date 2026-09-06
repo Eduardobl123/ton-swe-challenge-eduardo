@@ -1,5 +1,6 @@
 import { ValidationError } from '../domain/errors';
-import { EnvValidationError, loadConfig } from '../infrastructure/config/env';
+import { EnvValidationError, loadConfig, type LogLevel } from '../infrastructure/config/env';
+import { JsonConsoleLogger } from '../infrastructure/observability';
 import { buildContainer, type Container } from './container';
 
 /**
@@ -14,7 +15,8 @@ function main(): void {
   let container: Container;
 
   try {
-    container = buildContainer(loadConfig());
+    const config = loadConfig();
+    container = buildContainer(config, new JsonConsoleLogger(minimumLevelFor(config.log.level)));
   } catch (error) {
     // Duas famílias de falha de configuração chegam aqui. O schema recusa valor
     // ausente ou malformado; o domínio recusa combinação incoerente, como um
@@ -58,6 +60,23 @@ function main(): void {
   );
   console.log('');
   console.log('O servidor HTTP entra em serviço na issue #8.');
+}
+
+/**
+ * O `LOG_LEVEL` do ambiente admite seis níveis; a porta `Logger` expõe três.
+ * Níveis mais detalhados que `info` colapsam nele, e `fatal` colapsa em `error`.
+ * O pino (issue #9) passa a honrar os seis.
+ */
+function minimumLevelFor(level: LogLevel): 'info' | 'warn' | 'error' {
+  switch (level) {
+    case 'fatal':
+    case 'error':
+      return 'error';
+    case 'warn':
+      return 'warn';
+    default:
+      return 'info';
+  }
 }
 
 main();

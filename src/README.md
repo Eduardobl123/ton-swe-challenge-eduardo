@@ -26,7 +26,8 @@ src/
 │   │   ├── dynamodb/      repositórios sobre a tabela única
 │   │   └── in-memory/     mesmos repositórios em memória, para teste e dev
 │   ├── security/          argon2id (hash) e jose (assinatura JWT)
-│   ├── observability/     pino, request-id e Sentry
+│   ├── observability/     log estruturado; pino e Sentry na issue #9
+│   ├── system/            relógio e demais recursos da plataforma
 │   └── config/            leitura e validação do ambiente
 │
 └── main/              ← composition root. O único lugar que enxerga tudo.

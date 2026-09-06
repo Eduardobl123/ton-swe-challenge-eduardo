@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { buildContainer } from '../../../src/main/container';
 import { loadConfig } from '../../../src/infrastructure/config/env';
 import { ValidationError } from '../../../src/domain/errors';
+import { RecordingLogger } from '../../support/fakes';
 
 const baseEnv = {
   JWT_SECRET: 'um-segredo-de-teste-com-mais-de-trinta-e-dois-caracteres',
@@ -9,11 +10,15 @@ const baseEnv = {
 } satisfies NodeJS.ProcessEnv;
 
 const montar = (overrides: NodeJS.ProcessEnv = {}) =>
-  buildContainer(loadConfig({ ...baseEnv, ...overrides }));
+  buildContainer(loadConfig({ ...baseEnv, ...overrides }), new RecordingLogger());
 
 describe('buildContainer', () => {
   it('repassa a configuração validada', () => {
     expect(montar({ PORT: '8080' }).config.http.port).toBe(8080);
+  });
+
+  it('monta o caso de uso de autenticação', () => {
+    expect(montar().useCases.authenticateUser).toBeDefined();
   });
 
   describe('política de bloqueio', () => {
