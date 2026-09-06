@@ -1,4 +1,5 @@
 import { ValidationError } from '../errors';
+import { cloneDate } from '../shared/clone-date';
 import type { Money } from '../value-objects';
 
 const MAX_NAME_LENGTH = 200;
@@ -59,7 +60,7 @@ export class Product {
       );
     }
 
-    return new Product({ ...props, name });
+    return new Product({ ...props, name, createdAt: cloneDate(props.createdAt) });
   }
 
   public get id(): string {
@@ -87,10 +88,10 @@ export class Product {
   }
 
   public get createdAt(): Date {
-    return this.props.createdAt;
+    return cloneDate(this.props.createdAt);
   }
 
   public toProps(): ProductProps {
-    return { ...this.props };
+    return { ...this.props, createdAt: cloneDate(this.props.createdAt) };
   }
 }

@@ -12,8 +12,11 @@ export default defineConfig({
       include: ['src/**/*.ts'],
       exclude: [
         'src/**/*.d.ts',
-        // Composition root e entrypoints: sem lógica própria, cobertos pelos testes e2e (issue #13).
-        'src/main/**',
+        // Apenas os entrypoints ficam de fora: eles executam no import e são
+        // exercitados pelos testes ponta a ponta (issue #13). O composition root
+        // tem lógica própria e é coberto por teste unitário.
+        'src/main/server.ts',
+        'src/main/lambda.ts',
       ],
       /**
        * O núcleo (domínio + aplicação) tem o gate alto porque é código puro,

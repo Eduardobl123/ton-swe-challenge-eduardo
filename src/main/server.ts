@@ -1,5 +1,6 @@
+import { ValidationError } from '../domain/errors';
 import { EnvValidationError, loadConfig } from '../infrastructure/config/env';
-import { buildContainer } from './container';
+import { buildContainer, type Container } from './container';
 
 /**
  * Entrypoint local.
@@ -10,20 +11,38 @@ import { buildContainer } from './container';
  * equivalente para o AWS Lambda (`src/main/lambda.ts`) chega na issue #10.
  */
 function main(): void {
-  let config;
+  let container: Container;
 
   try {
-    config = loadConfig();
+    container = buildContainer(loadConfig());
   } catch (error) {
+    // Duas famílias de falha de configuração chegam aqui. O schema recusa valor
+    // ausente ou malformado; o domínio recusa combinação incoerente, como um
+    // teto de bloqueio menor que a duração base. As duas merecem a mesma
+    // mensagem curada: um stack trace do V8 não diz a ninguém qual variável
+    // corrigir.
     if (error instanceof EnvValidationError) {
       console.error(error.message);
       process.exitCode = 1;
       return;
     }
+
+    if (error instanceof ValidationError) {
+      console.error(
+        [
+          'Configuração de ambiente inconsistente.',
+          `  - ${error.field}: ${error.message}`,
+          '',
+          'Referência completa das variáveis: .env.example',
+        ].join('\n'),
+      );
+      process.exitCode = 1;
+      return;
+    }
+
     throw error;
   }
 
-  const container = buildContainer(config);
   const { persistence, http, nodeEnv, version } = container.config;
   const { lockout } = container.policies;
 

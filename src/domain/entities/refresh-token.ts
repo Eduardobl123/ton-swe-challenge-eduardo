@@ -1,4 +1,5 @@
 import { ValidationError } from '../errors';
+import { cloneDate, cloneOptionalDate } from '../shared/clone-date';
 
 export interface RefreshTokenProps {
   readonly id: string;
@@ -57,7 +58,12 @@ export class RefreshToken {
       throw new ValidationError('expiresAt', 'Expiração deve ser posterior à emissão.');
     }
 
-    return new RefreshToken(props);
+    return new RefreshToken({
+      ...props,
+      issuedAt: cloneDate(props.issuedAt),
+      expiresAt: cloneDate(props.expiresAt),
+      revokedAt: cloneOptionalDate(props.revokedAt),
+    });
   }
 
   public get id(): string {
@@ -77,15 +83,15 @@ export class RefreshToken {
   }
 
   public get issuedAt(): Date {
-    return this.props.issuedAt;
+    return cloneDate(this.props.issuedAt);
   }
 
   public get expiresAt(): Date {
-    return this.props.expiresAt;
+    return cloneDate(this.props.expiresAt);
   }
 
   public get revokedAt(): Date | undefined {
-    return this.props.revokedAt;
+    return cloneOptionalDate(this.props.revokedAt);
   }
 
   public get replacedByTokenId(): string | undefined {
@@ -129,10 +135,15 @@ export class RefreshToken {
       return this;
     }
 
-    return new RefreshToken({ ...this.props, revokedAt: now });
+    return new RefreshToken({ ...this.props, revokedAt: cloneDate(now) });
   }
 
   public toProps(): RefreshTokenProps {
-    return { ...this.props };
+    return {
+      ...this.props,
+      issuedAt: cloneDate(this.props.issuedAt),
+      expiresAt: cloneDate(this.props.expiresAt),
+      revokedAt: cloneOptionalDate(this.props.revokedAt),
+    };
   }
 }

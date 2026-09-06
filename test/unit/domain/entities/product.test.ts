@@ -57,12 +57,9 @@ describe('Product', () => {
       expect(() => criarProduto({ sku })).toThrow(ValidationError);
     });
 
-    it.each(['ABC', 'TON-MAQ-001', 'T3', 'A1B2C3'].filter((sku) => sku.length >= 3))(
-      'aceita SKU %s',
-      (sku) => {
-        expect(() => criarProduto({ sku })).not.toThrow();
-      },
-    );
+    it.each(['ABC', 'TON-MAQ-001', 'A1B2C3', 'T3X', 'A'.repeat(32)])('aceita SKU %s', (sku) => {
+      expect(() => criarProduto({ sku })).not.toThrow();
+    });
 
     it('aceita descrição vazia', () => {
       expect(() => criarProduto({ description: '' })).not.toThrow();
@@ -82,7 +79,17 @@ describe('Product', () => {
     const produto = criarProduto();
     const props = produto.toProps();
     (props as { name: string }).name = 'alterado';
+    props.createdAt.setFullYear(1999);
 
     expect(produto.name).toBe('Maquininha T3');
+    expect(produto.createdAt).toEqual(AGORA);
+  });
+
+  it('não deixa alterar a criação pela data devolvida no getter', () => {
+    const produto = criarProduto();
+
+    produto.createdAt.setFullYear(1999);
+
+    expect(produto.createdAt).toEqual(AGORA);
   });
 });

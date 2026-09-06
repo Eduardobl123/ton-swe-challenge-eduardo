@@ -13,7 +13,8 @@ src/
 │   ├── entities/          User, Product, RefreshToken
 │   ├── value-objects/     Email, PasswordHash, Money, PageCursor
 │   ├── errors/            erros com `code` estável, mapeados para HTTP na borda
-│   └── ports/             interfaces que o domínio exige do mundo externo
+│   ├── ports/             interfaces que o domínio exige do mundo externo
+│   └── shared/            utilitários puros usados só dentro do domínio
 │
 ├── application/       ← casos de uso. Orquestram o domínio através das portas.
 │   ├── use-cases/         AuthenticateUser, RefreshSession, ListProducts

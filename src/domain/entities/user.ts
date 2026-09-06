@@ -1,4 +1,5 @@
 import { ValidationError } from '../errors';
+import { cloneDate, cloneOptionalDate } from '../shared/clone-date';
 import type { Email, LockoutPolicy, PasswordHash } from '../value-objects';
 
 export interface UserProps {
@@ -55,7 +56,11 @@ export class User {
       throw new ValidationError('version', 'Versão deve ser inteiro não negativo.');
     }
 
-    return new User(props);
+    return new User({
+      ...props,
+      createdAt: cloneDate(props.createdAt),
+      lockedUntil: cloneOptionalDate(props.lockedUntil),
+    });
   }
 
   public get id(): string {
@@ -75,11 +80,11 @@ export class User {
   }
 
   public get lockedUntil(): Date | undefined {
-    return this.props.lockedUntil;
+    return cloneOptionalDate(this.props.lockedUntil);
   }
 
   public get createdAt(): Date {
-    return this.props.createdAt;
+    return cloneDate(this.props.createdAt);
   }
 
   public get version(): number {
@@ -98,6 +103,11 @@ export class User {
    * O contador **não** é zerado quando um bloqueio expira, apenas quando um
    * login dá certo. Sem isso, quem ataca esperaria o bloqueio passar e voltaria
    * ao mesmo ritmo indefinidamente, sem nunca escalar a punição.
+   *
+   * Quando a política em vigor não pede bloqueio, o bloqueio anterior é
+   * mantido, e não apagado. Uma tentativa malsucedida jamais deve reduzir a
+   * proteção da conta: afrouxar `LOCKOUT_MAX_ATTEMPTS` em produção destrancaria
+   * contas já bloqueadas na próxima senha errada.
    */
   public recordFailedLogin(now: Date, policy: LockoutPolicy): User {
     const failedLoginAttempts = this.props.failedLoginAttempts + 1;
@@ -106,7 +116,8 @@ export class User {
     return new User({
       ...this.props,
       failedLoginAttempts,
-      lockedUntil: lockDurationMs > 0 ? new Date(now.getTime() + lockDurationMs) : undefined,
+      lockedUntil:
+        lockDurationMs > 0 ? new Date(now.getTime() + lockDurationMs) : this.props.lockedUntil,
     });
   }
 
@@ -131,6 +142,10 @@ export class User {
    * aparecer.
    */
   public toProps(): UserProps {
-    return { ...this.props };
+    return {
+      ...this.props,
+      createdAt: cloneDate(this.props.createdAt),
+      lockedUntil: cloneOptionalDate(this.props.lockedUntil),
+    };
   }
 }

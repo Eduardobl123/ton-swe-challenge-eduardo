@@ -46,6 +46,34 @@ describe('User', () => {
     });
   });
 
+  describe('imutabilidade', () => {
+    it('não deixa alterar o bloqueio pela data devolvida no getter', () => {
+      // Recuar o lockedUntil destrancaria uma conta que deve seguir bloqueada.
+      const usuario = criarUsuario({ lockedUntil: new Date(AGORA.getTime() + 30 * SEGUNDO) });
+
+      usuario.lockedUntil?.setTime(AGORA.getTime() - 1);
+
+      expect(usuario.isLocked(AGORA)).toBe(true);
+    });
+
+    it('não deixa alterar a criação pela data devolvida no getter', () => {
+      const usuario = criarUsuario();
+
+      usuario.createdAt.setFullYear(1999);
+
+      expect(usuario.createdAt).toEqual(AGORA);
+    });
+
+    it('não guarda a referência da data recebida na construção', () => {
+      const bloqueio = new Date(AGORA.getTime() + 30 * SEGUNDO);
+      const usuario = criarUsuario({ lockedUntil: bloqueio });
+
+      bloqueio.setTime(AGORA.getTime() - 1);
+
+      expect(usuario.isLocked(AGORA)).toBe(true);
+    });
+  });
+
   describe('isLocked', () => {
     it('não está bloqueado quando nunca houve bloqueio', () => {
       expect(criarUsuario().isLocked(AGORA)).toBe(false);
@@ -117,6 +145,23 @@ describe('User', () => {
       expect(novaFalha.lockedUntil).toEqual(new Date(depoisDoBloqueio.getTime() + 60 * SEGUNDO));
     });
 
+    it('preserva o bloqueio vigente quando a política deixa de exigir um novo', () => {
+      // Cenário real: operação aumenta LOCKOUT_MAX_ATTEMPTS e reimplanta. Uma
+      // tentativa malsucedida nunca deve reduzir a proteção da conta.
+      const frouxa = LockoutPolicy.create({
+        maxAttempts: 10,
+        baseDelayMs: 30_000,
+        maxDelayMs: 900_000,
+      });
+      const bloqueado = falharVezes(criarUsuario(), 5);
+
+      const depois = bloqueado.recordFailedLogin(AGORA, frouxa);
+
+      expect(depois.failedLoginAttempts).toBe(6);
+      expect(depois.isLocked(AGORA)).toBe(true);
+      expect(depois.lockedUntil).toEqual(bloqueado.lockedUntil);
+    });
+
     it('não altera a instância original', () => {
       const original = criarUsuario();
       original.recordFailedLogin(AGORA, policy);
@@ -169,6 +214,18 @@ describe('User', () => {
       mutavel.failedLoginAttempts = 99;
 
       expect(usuario.failedLoginAttempts).toBe(0);
+    });
+
+    it('devolve datas copiadas, não referências ao estado interno', () => {
+      // `Date` é mutável: sem cópia, quem recebe as props altera a entidade.
+      const usuario = criarUsuario({ lockedUntil: new Date(AGORA.getTime() + 30 * SEGUNDO) });
+      const props = usuario.toProps();
+
+      props.createdAt.setFullYear(1999);
+      props.lockedUntil?.setTime(0);
+
+      expect(usuario.createdAt).toEqual(AGORA);
+      expect(usuario.isLocked(AGORA)).toBe(true);
     });
 
     it('carrega todos os campos que a persistência precisa', () => {

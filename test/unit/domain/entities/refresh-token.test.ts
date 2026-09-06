@@ -129,7 +129,29 @@ describe('RefreshToken', () => {
     const token = criarToken();
     const props = token.toProps();
     (props as { tokenHash: string }).tokenHash = 'alterado';
+    props.expiresAt.setTime(0);
 
     expect(token.tokenHash).toBe('a'.repeat(64));
+    expect(token.expiresAt).toEqual(EXPIRACAO);
+  });
+
+  it('não deixa antecipar a expiração pela data devolvida no getter', () => {
+    // Recuar o expiresAt invalidaria um token que ainda deveria valer.
+    const token = criarToken();
+
+    token.expiresAt.setTime(0);
+    token.issuedAt.setFullYear(1999);
+
+    expect(token.isExpired(EMISSAO)).toBe(false);
+    expect(token.issuedAt).toEqual(EMISSAO);
+  });
+
+  it('não deixa apagar a revogação pela data devolvida no getter', () => {
+    const revogado = criarToken().revoke(EMISSAO);
+
+    revogado.revokedAt?.setTime(0);
+
+    expect(revogado.revokedAt).toEqual(EMISSAO);
+    expect(revogado.isRevoked()).toBe(true);
   });
 });
