@@ -18,13 +18,23 @@ import {
   Sha256TokenGenerator,
 } from '../infrastructure/security';
 import { CursorCodec } from '../infrastructure/persistence/cursor-codec';
+import {
+  DynamoDbProductRepository,
+  DynamoDbRateLimiterStore,
+  DynamoDbReadinessProbe,
+  DynamoDbRefreshTokenRepository,
+  DynamoDbUserRepository,
+  createClients,
+} from '../infrastructure/persistence/dynamodb';
 import { InMemoryProductRepository } from '../infrastructure/persistence/in-memory/in-memory-product-repository';
 import { InMemoryRateLimiterStore } from '../infrastructure/persistence/in-memory/in-memory-rate-limiter-store';
 import { InMemoryRefreshTokenRepository } from '../infrastructure/persistence/in-memory/in-memory-refresh-token-repository';
 import { InMemoryUserRepository } from '../infrastructure/persistence/in-memory/in-memory-user-repository';
 import { AlwaysReadyProbe, type ReadinessProbe } from '../infrastructure/system/readiness-probe';
+import type { ProductRepository, RateLimiterStore, RefreshTokenRepository } from '../domain/ports';
 import { SystemClock } from '../infrastructure/system/system-clock';
 import { UuidV7IdGenerator } from '../infrastructure/system/uuid-v7-id-generator';
+import type { Product } from '../domain/entities';
 import type { AppConfig } from '../infrastructure/config/env';
 
 /**
@@ -79,10 +89,22 @@ export interface UseCases {
  */
 export interface Seeding {
   readonly users: UserRepository;
-  readonly products: InMemoryProductRepository;
+  readonly products: SeedableProductRepository;
   readonly passwordHasher: PasswordHasher;
   readonly clock: Clock;
   readonly idGenerator: IdGenerator;
+}
+
+/**
+ * Repositório de catálogo que aceita escrita.
+ *
+ * A porta do domínio só declara leitura, porque nenhum caso de uso cria
+ * produto. Popular dados não é intenção de negócio e não deveria inventar um
+ * caso de uso só para existir, então a capacidade fica aqui, restrita a quem
+ * carrega os dados.
+ */
+export interface SeedableProductRepository extends ProductRepository {
+  add(product: Product): void | Promise<void>;
 }
 
 export interface Services {
@@ -141,10 +163,15 @@ export function buildContainer(config: AppConfig, logger: Logger): Container {
   // A persistência real chega na issue #7. Até lá o repositório em memória
   // respeita o mesmo contrato, incluindo a concorrência otimista, então trocar
   // a implementação não altera nenhum caso de uso.
-  const users = new InMemoryUserRepository();
-  const refreshTokens = new InMemoryRefreshTokenRepository();
   const secureTokens = new Sha256TokenGenerator();
   const idGenerator = new UuidV7IdGenerator();
+  const cursors = new CursorCodec(config.auth.jwtSecret);
+
+  const { users, refreshTokens, products, rateLimiterStore, readiness } = buildPersistence(
+    config,
+    cursors,
+    logger,
+  );
 
   const sessionIssuer = new SessionIssuer({
     tokenSigner,
@@ -154,9 +181,6 @@ export function buildContainer(config: AppConfig, logger: Logger): Container {
     accessTokenTtlSeconds: config.auth.accessTtlSeconds,
     refreshTokenTtlSeconds: config.auth.refreshTtlSeconds,
   });
-  const products = new InMemoryProductRepository(new CursorCodec(config.auth.jwtSecret));
-  const rateLimiterStore = new InMemoryRateLimiterStore();
-
   const rateLimit = buildRateLimitPolicies({
     loginPerMinute: config.rateLimit.loginPerMinute,
     refreshPerMinute: config.rateLimit.refreshPerMinute,
@@ -196,8 +220,55 @@ export function buildContainer(config: AppConfig, logger: Logger): Container {
         logger,
         failOpen: config.rateLimit.failOpen,
       }),
-      readiness: new AlwaysReadyProbe(),
+      readiness,
       tokenSigner,
     },
+  };
+}
+
+interface Persistence {
+  readonly users: UserRepository;
+  readonly refreshTokens: RefreshTokenRepository;
+  readonly products: SeedableProductRepository;
+  readonly rateLimiterStore: RateLimiterStore;
+  readonly readiness: ReadinessProbe;
+}
+
+/**
+ * Escolhe os adaptadores de persistência.
+ *
+ * É o único ponto do projeto que sabe qual banco está em uso. Os casos de uso
+ * recebem portas e não mudam nada quando a escolha muda — é a inversão de
+ * dependência valendo na prática, e não só no diagrama.
+ *
+ * @throws quando produção pede armazenamento em memória. O estado viveria em
+ *   uma instância só, sumiria a cada reinício e não seria compartilhado entre
+ *   invocações do Lambda: sessões e contadores de bloqueio simplesmente não
+ *   funcionariam, sem erro visível.
+ */
+function buildPersistence(config: AppConfig, cursors: CursorCodec, logger: Logger): Persistence {
+  if (config.persistence.driver === 'memory') {
+    if (config.isProduction) {
+      throw new Error('Persistência em memória não pode ser usada em produção.');
+    }
+
+    return {
+      users: new InMemoryUserRepository(),
+      refreshTokens: new InMemoryRefreshTokenRepository(),
+      products: new InMemoryProductRepository(cursors),
+      rateLimiterStore: new InMemoryRateLimiterStore(),
+      readiness: new AlwaysReadyProbe(),
+    };
+  }
+
+  const { region, endpoint, tableName } = config.persistence;
+  const { documents, base } = createClients({ region, endpoint });
+
+  return {
+    users: new DynamoDbUserRepository(documents, tableName),
+    refreshTokens: new DynamoDbRefreshTokenRepository(documents, tableName),
+    products: new DynamoDbProductRepository(documents, tableName, cursors),
+    rateLimiterStore: new DynamoDbRateLimiterStore(documents, tableName),
+    readiness: new DynamoDbReadinessProbe(base, tableName, logger),
   };
 }

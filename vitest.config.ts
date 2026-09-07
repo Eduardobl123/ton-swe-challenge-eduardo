@@ -20,6 +20,12 @@ export default defineConfig({
         // tem lógica própria e é coberto por teste unitário.
         'src/main/server.ts',
         'src/main/lambda.ts',
+        // Os adaptadores DynamoDB são provados pela suíte de integração, contra
+        // o banco de verdade: o que importa neles — condição de escrita,
+        // incremento atômico, transação — não existe em duplo. Contá-los aqui
+        // faria o relatório da suíte unitária mentir nas duas direções.
+        // A consolidação dos dois relatórios é a issue #13.
+        'src/infrastructure/persistence/dynamodb/**',
       ],
       /**
        * O núcleo (domínio + aplicação) tem o gate alto porque é código puro,

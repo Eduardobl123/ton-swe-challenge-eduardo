@@ -1,0 +1,23 @@
+# Ambiente local sem AWS.
+#
+# O DynamoDB Local roda o mesmo motor de consulta do serviço gerenciado, então
+# `ConditionExpression`, `ADD` atômico e transação se comportam igual. É o que
+# permite aos testes de integração provarem as garantias de concorrência sem
+# depender de uma conta na nuvem.
+services:
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    container_name: ton-challenge-dynamodb
+    # `-inMemory` mantém os dados apenas enquanto o contêiner vive, o que deixa
+    # cada execução da suíte partir de um estado conhecido.
+    command: ['-jar', 'DynamoDBLocal.jar', '-sharedDb', '-inMemory']
+    ports:
+      - '8000:8000'
+    healthcheck:
+      # A porta aceitar conexão não basta: o processo responde antes de estar
+      # pronto para consulta, e o teste falharia por corrida na subida.
+      test: ['CMD-SHELL', 'java -version >/dev/null 2>&1 && exit 0 || exit 1']
+      interval: 2s
+      timeout: 3s
+      retries: 15
+      start_period: 3s

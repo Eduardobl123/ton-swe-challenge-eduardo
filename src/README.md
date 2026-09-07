@@ -27,7 +27,8 @@ src/
 │   ├── http/              Fastify: rotas, plugins, schemas zod, error handler
 │   │                      (app.ts monta a instância; não sabe onde roda)
 │   ├── persistence/
-│   │   ├── dynamodb/      repositórios sobre a tabela única
+│   │   ├── dynamodb/      repositórios sobre a tabela única; `table.ts` guarda
+│   │   │                  o desenho das chaves, que é o esquema de verdade
 │   │   └── in-memory/     mesmos repositórios em memória, para teste e dev
 │   ├── security/          argon2id (hash) e jose (assinatura JWT)
 │   ├── observability/     log estruturado; pino e Sentry na issue #9

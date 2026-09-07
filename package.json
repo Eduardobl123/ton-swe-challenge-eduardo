@@ -19,14 +19,19 @@
     "format:check": "prettier --check .",
     "test": "vitest run test/unit",
     "test:unit": "vitest run test/unit",
-    "test:integration": "vitest run test/integration --passWithNoTests",
+    "test:integration": "vitest run test/integration",
     "test:e2e": "vitest run test/e2e --passWithNoTests",
     "test:watch": "vitest test/unit",
     "test:coverage": "vitest run test/unit --coverage",
     "prepare": "husky",
-    "openapi:export": "tsx scripts/export-openapi.ts"
+    "openapi:export": "tsx scripts/export-openapi.ts",
+    "db:create": "tsx scripts/create-table.ts",
+    "db:seed": "tsx scripts/seed.ts",
+    "lint:no-scan": "! grep -rn 'ScanCommand' src/ || (echo 'Varredura no c\u00f3digo de produ\u00e7\u00e3o: use Query com \u00edndice.' && exit 1)"
   },
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1127.0",
+    "@aws-sdk/lib-dynamodb": "^3.1127.0",
     "@fastify/cors": "^11.3.0",
     "@fastify/helmet": "^13.1.1",
     "@fastify/swagger": "^9.8.1",

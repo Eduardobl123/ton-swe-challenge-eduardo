@@ -7,6 +7,8 @@ import { RecordingLogger } from '../../support/fakes';
 const baseEnv = {
   JWT_SECRET: 'um-segredo-de-teste-com-mais-de-trinta-e-dois-caracteres',
   TABLE_NAME: 'ton-challenge-test',
+  // Sem Docker: a persistência real é exercitada pelos testes de integração.
+  PERSISTENCE: 'memory',
 } satisfies NodeJS.ProcessEnv;
 
 const montar = (overrides: NodeJS.ProcessEnv = {}) =>

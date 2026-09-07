@@ -22,7 +22,7 @@ riscos. Esta tabela é a fonte de verdade sobre o que já roda.
 | [4](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/4)   | Refresh token rotativo com detecção de reuso | ✅ pronto   |
 | [5](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/5)   | Listagem paginada por cursor                 | ✅ pronto   |
 | [6](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/6)   | Rate limit por usuário e por IP              | ✅ pronto   |
-| [7](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/7)   | Persistência DynamoDB e ambiente local       | ⏳ pendente |
+| [7](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/7)   | Persistência DynamoDB e ambiente local       | ✅ pronto   |
 | [8](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/8)   | Adaptador HTTP Fastify e OpenAPI             | ✅ pronto   |
 | [9](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/9)   | Observabilidade: logs, request-id e Sentry   | ⏳ pendente |
 | [10](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/10) | Infraestrutura AWS com Terraform             | ⏳ pendente |
@@ -128,6 +128,31 @@ Gere um segredo real com:
 ```bash
 openssl rand -base64 48
 ```
+
+### Com DynamoDB de verdade
+
+O modo padrão usa dados em memória, o que dispensa Docker. Para exercitar a
+persistência real:
+
+```bash
+docker compose up -d        # DynamoDB Local
+npm run db:create           # cria a tabela a partir de infra/table-schema.json
+npm run db:seed             # 1 usuário e 250 produtos, idempotente
+
+PERSISTENCE=dynamodb npm run dev
+```
+
+O mesmo `npm run db:seed` roda contra a AWS: basta não definir
+`DYNAMODB_ENDPOINT`. Ter um script separado para produção faria dele o que
+ninguém executa até a hora da entrega, que é justamente quando falharia.
+
+```bash
+npm run test:integration    # 45 testes contra o banco de verdade
+```
+
+Eles provam o que duplo nenhum prova: escrita condicionada por versão,
+incremento atômico do contador e rotação transacional do refresh token, cada um
+com o caso de cem operações simultâneas.
 
 ### Exercitando a API
 

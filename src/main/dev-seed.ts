@@ -43,7 +43,7 @@ export async function seedForDevelopment(
   );
 
   for (let i = 1; i <= 42; i += 1) {
-    products.add(
+    await products.add(
       Product.create({
         id: idGenerator.next(),
         sku: `TON-${String(i).padStart(3, '0')}`,

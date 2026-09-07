@@ -11,6 +11,8 @@ export const DEMO_PASSWORD = 'Desafio@Ton2026';
 const baseEnv = {
   JWT_SECRET: 'um-segredo-de-teste-com-mais-de-trinta-e-dois-caracteres',
   TABLE_NAME: 'ton-challenge-test',
+  // Sem Docker: a persistência real é exercitada pelos testes de integração.
+  PERSISTENCE: 'memory',
   // A documentação interativa não participa dos testes de contrato.
   SWAGGER_ENABLED: 'false',
 } satisfies NodeJS.ProcessEnv;

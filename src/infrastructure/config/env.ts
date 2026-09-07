@@ -36,6 +36,7 @@ const envSchema = z.object({
   LOCKOUT_BASE_DELAY_MS: z.coerce.number().int().positive().default(30_000),
   LOCKOUT_MAX_DELAY_MS: z.coerce.number().int().positive().default(900_000),
 
+  PERSISTENCE: z.enum(['memory', 'dynamodb']).default('dynamodb'),
   AWS_REGION: z.string().min(1).default('us-east-1'),
   TABLE_NAME: z.string().min(1),
   DYNAMODB_ENDPOINT: z.preprocess(emptyToUndefined, z.url().optional()),
@@ -100,6 +101,15 @@ export interface AppConfig {
     readonly maxDelayMs: number;
   };
   readonly persistence: {
+    /**
+     * Onde os dados vivem.
+     *
+     * O padrão é `dynamodb` de propósito: um ambiente mal configurado deve
+     * falhar por não achar a tabela, e não subir silenciosamente guardando tudo
+     * na memória de uma instância. O `.env.example` usa `memory` para que a
+     * aplicação suba sem Docker.
+     */
+    readonly driver: 'memory' | 'dynamodb';
     readonly region: string;
     readonly tableName: string;
     /** Definido apenas em desenvolvimento, apontando para o DynamoDB Local. */
@@ -182,6 +192,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       maxDelayMs: env.LOCKOUT_MAX_DELAY_MS,
     },
     persistence: {
+      driver: env.PERSISTENCE,
       region: env.AWS_REGION,
       tableName: env.TABLE_NAME,
       endpoint: env.DYNAMODB_ENDPOINT,
