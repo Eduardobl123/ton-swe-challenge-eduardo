@@ -25,9 +25,14 @@ aws sts get-caller-identity   # confirma em qual conta você vai provisionar
 
 ```bash
 # 1. Empacota a função.
-#    Resolve o binário nativo do argon2 para linux/arm64 mesmo que você esteja
-#    em macOS, e falha se ele não entrar no artefato.
+#    Resolve para linux/arm64 tudo que não cabe no bundle — inclusive o binário
+#    nativo do argon2 — mesmo que você esteja em macOS, e falha se algum pacote
+#    que o bundle importa não entrar no artefato.
 npm run package:lambda
+
+# 1b. Prova que o artefato sobe: roda no runtime oficial do Lambda e exige um
+#     200 real em /health. Precisa de Docker.
+npm run verify:lambda
 
 # 2. Provisiona.
 cd infra/envs/dev
@@ -126,5 +131,8 @@ verificado de fato:
 - O artefato do Lambda contém o binário do argon2 para `linux-arm64-gnu`, e ele
   **carrega e verifica senha** dentro de um contêiner `linux/arm64` — que era o
   risco registrado no ADR 0007.
-- O empacotamento falha, em vez de gerar artefato incompleto, quando o binário
-  não entra.
+- O empacotamento falha, em vez de gerar artefato incompleto, quando um pacote
+  importado pelo bundle não entra no artefato.
+- O artefato **sobe e responde 200 em `/health`** dentro da imagem oficial
+  `public.ecr.aws/lambda/nodejs:24` em `arm64`, com a documentação ligada e
+  desligada (`npm run verify:lambda`).

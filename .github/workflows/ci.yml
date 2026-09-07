@@ -97,8 +97,11 @@ jobs:
         run: git diff --exit-code docs/openapi.json
 
   build:
-    name: Build e tamanho do artefato
-    runs-on: ubuntu-latest
+    name: Artefato do Lambda
+    # A função roda em arm64, e a verificação sobe o artefato no runtime oficial.
+    # Executor da mesma arquitetura evita emulação e mantém o teste fiel ao que
+    # é publicado — inclusive o binário nativo do argon2.
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -106,13 +109,21 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm run build
+      - name: Empacota
+        # Falha quando um pacote importado pelo bundle não entra no artefato.
+        run: npm run package:lambda
+      - name: O artefato sobe no runtime oficial
+        # Nenhum teste unitário ou de integração toca neste caminho: eles
+        # importam o código-fonte, e o que vai para a AWS é o artefato. Já foram
+        # publicados aqui artefatos que quebravam no carregamento do módulo —
+        # em toda invocação — com a suíte inteira verde.
+        run: npm run verify:lambda
       - name: Tamanho do pacote
         # O tamanho entra direto no cold start do Lambda, então vale ficar
         # visível a cada execução em vez de virar surpresa no deploy.
         run: |
-          TAMANHO=$(du -sh dist | cut -f1)
-          echo "Pacote: ${TAMANHO}" >> "$GITHUB_STEP_SUMMARY"
+          TAMANHO=$(du -sh dist/lambda-package | cut -f1)
+          echo "Artefato do Lambda: ${TAMANHO}" >> "$GITHUB_STEP_SUMMARY"
           ls -lh dist/
 
   dependencias:

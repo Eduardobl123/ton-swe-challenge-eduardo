@@ -373,6 +373,7 @@ privilégio: nenhuma declaração usa `*` em recurso ou em ação.
 
 ```bash
 npm run package:lambda
+npm run verify:lambda   # sobe o artefato no runtime oficial e exige 200 em /health
 cd infra/envs/dev && export TF_VAR_jwt_secret=$(openssl rand -base64 48)
 terraform init && terraform apply
 ```

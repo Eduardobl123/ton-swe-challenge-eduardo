@@ -28,7 +28,8 @@
     "db:create": "tsx scripts/create-table.ts",
     "db:seed": "tsx scripts/seed.ts",
     "lint:no-scan": "! grep -rn 'ScanCommand' src/ || (echo 'Varredura no código de produção: use Query com índice.' && exit 1)",
-    "package:lambda": "tsx scripts/package-lambda.ts"
+    "package:lambda": "tsx scripts/package-lambda.ts",
+    "verify:lambda": "tsx scripts/verify-lambda-artifact.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1127.0",

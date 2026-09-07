@@ -27,6 +27,31 @@ desenvolvimento. Como a entrega é um bundle, cair para `nodejs22.x` é a troca 
 uma linha caso a conta de destino não ofereça o runtime mais novo — algo a
 confirmar contra a lista de runtimes suportados no momento do deploy.
 
+### O que não entra no bundle, e por quê
+
+Um bundle é um arquivo de JavaScript. Todo pacote que abre um arquivo real em
+tempo de execução perde esse arquivo ao ser embutido, e a falha aparece só na
+execução — no carregamento do módulo, quebrando toda invocação. Três pacotes se
+enquadram e viajam instalados, ao lado do bundle:
+
+| Pacote                | O que lê do disco                                    |
+| --------------------- | ---------------------------------------------------- |
+| `@node-rs/argon2`     | binário nativo, escolhido por plataforma             |
+| `@fastify/swagger-ui` | os arquivos da interface, resolvidos por `__dirname` |
+| `pino`                | o script do worker do modo legível                   |
+
+A lista vive em `tsup.config.ts` e não é repetida no empacotamento:
+`scripts/package-lambda.ts` lê os `import` que sobraram no bundle e instala
+exatamente esses. A versão anterior mantinha uma cópia da lista, as duas
+divergiram, e o artefato passou a ser publicado sem dezesseis dos pacotes que
+importava.
+
+Nada disso é visível para teste unitário ou de integração: todos importam o
+código-fonte, enquanto o que sobe para a AWS é o artefato. Por isso
+`npm run verify:lambda` roda o artefato dentro da imagem oficial do runtime, em
+`arm64`, e exige um 200 real em `/health` — com a documentação ligada e
+desligada, porque a diferença muda o que o boot carrega.
+
 ## Alternativas consideradas
 
 **ECS Fargate com balanceador de aplicação.** Sem cold start e com processo
@@ -51,10 +76,12 @@ de avaliação. Escala automática sem configuração. O throttle por estágio d
 Gateway entrega a camada de borda do rate limit sem código. `arm64` custa menos
 e tem desempenho equivalente para esta carga.
 
-**Negativas.** Cold start real, que o bundle único e a ausência de inicialização
+**Negativas.** Cold start real, que o bundle e a ausência de inicialização
 pesada mitigam mas não eliminam. Estado em memória não é confiável entre
-invocações, o que motivou o contador de rate limit externo (ADR 0005). O módulo
-nativo do argon2 exige atenção ao empacotamento (ADR 0007).
+invocações, o que motivou o contador de rate limit externo (ADR 0005). O
+empacotamento passa a ter uma regra a respeitar — o que lê do disco fica fora do
+bundle — e ela só é confiável porque existe uma verificação que roda o artefato
+de verdade.
 
 **Mitigação.** Manter o bundle enxuto, ler segredos do SSM uma vez por instância
 e não por requisição, e medir o cold start registrando o número no README.

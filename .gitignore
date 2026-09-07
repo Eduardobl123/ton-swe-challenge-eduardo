@@ -23,6 +23,11 @@ coverage/
 .terraform/
 *.tfstate
 *.tfstate.*
+# O zip da função é gerado pelo `archive_file` dentro do próprio módulo, a cada
+# `terraform plan`. São megabytes de artefato reconstruível caindo no diretório
+# de trabalho: versioná-lo sujaria todo diff e ainda incorporaria um binário
+# nativo ao repositório.
+.terraform-artifact/
 *.tfvars
 !*.tfvars.example
 crash.log
