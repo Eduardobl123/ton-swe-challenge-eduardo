@@ -17,7 +17,10 @@ src/
 │   └── shared/            utilitários puros usados só dentro do domínio
 │
 ├── application/       ← casos de uso. Orquestram o domínio através das portas.
-│   ├── use-cases/         AuthenticateUser, RefreshSession, ListProducts
+│   ├── use-cases/         AuthenticateUser, ListProducts
+│   ├── session/           emissão, renovação e encerramento de sessão
+│   ├── rate-limit/        política de limites e janela deslizante
+│   ├── errors/            erros de aplicação, como limite excedido
 │   └── dto/               entrada e saída dos casos de uso (não são schemas HTTP)
 │
 ├── infrastructure/    ← adaptadores. Implementam as portas com tecnologia real.

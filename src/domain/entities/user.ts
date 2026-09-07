@@ -91,9 +91,27 @@ export class User {
     return this.props.version;
   }
 
+  /**
+   * Instante em que o bloqueio expira, ou `undefined` quando não há bloqueio em
+   * vigor.
+   *
+   * Existe além de `isLocked` porque quem precisa reagir ao bloqueio quase
+   * sempre precisa também da data — e obtê-la em duas chamadas obrigaria a
+   * tratar um caso impossível, o de estar bloqueado sem instante de expiração.
+   */
+  public lockedUntilIfLocked(now: Date): Date | undefined {
+    const { lockedUntil } = this.props;
+
+    if (lockedUntil === undefined || lockedUntil.getTime() <= now.getTime()) {
+      return undefined;
+    }
+
+    return cloneDate(lockedUntil);
+  }
+
   /** Verdadeiro enquanto o bloqueio ainda não expirou. */
   public isLocked(now: Date): boolean {
-    return this.props.lockedUntil !== undefined && this.props.lockedUntil.getTime() > now.getTime();
+    return this.lockedUntilIfLocked(now) !== undefined;
   }
 
   /**

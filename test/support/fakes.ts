@@ -1,4 +1,13 @@
-import type { Clock, LogFields, Logger, PasswordHasher, TokenSigner } from '../../src/domain/ports';
+import type {
+  Clock,
+  IdGenerator,
+  LogFields,
+  Logger,
+  OpaqueToken,
+  PasswordHasher,
+  SecureTokenGenerator,
+  TokenSigner,
+} from '../../src/domain/ports';
 import type { AccessTokenClaims, AccessTokenInput } from '../../src/domain/ports';
 import { PasswordHash } from '../../src/domain/value-objects';
 
@@ -33,6 +42,33 @@ export class FakePasswordHasher implements PasswordHasher {
     this.verifications.push({ password: plainPassword, hash: passwordHash.value });
 
     return Promise.resolve(passwordHash.value === `hashed:${plainPassword}`);
+  }
+}
+
+/** Gera tokens previsíveis, para que o teste possa afirmar sobre eles. */
+export class FakeSecureTokenGenerator implements SecureTokenGenerator {
+  private contador = 0;
+
+  public generate(): OpaqueToken {
+    this.contador += 1;
+    const value = `refresh-${String(this.contador)}`;
+
+    return { value, hash: this.hash(value) };
+  }
+
+  public hash(value: string): string {
+    return `sha256:${value}`;
+  }
+}
+
+/** Identificadores sequenciais e ordenáveis, como exige a porta. */
+export class SequentialIdGenerator implements IdGenerator {
+  private contador = 0;
+
+  public next(): string {
+    this.contador += 1;
+
+    return `id-${String(this.contador).padStart(4, '0')}`;
   }
 }
 

@@ -1,13 +1,19 @@
-import { ConcurrencyError, InvalidCredentialsError, ValidationError } from '../../domain/errors';
+import {
+  AccountLockedError,
+  ConcurrencyError,
+  InvalidCredentialsError,
+  ValidationError,
+} from '../../domain/errors';
 import { Email, type LockoutPolicy, type PasswordHash } from '../../domain/value-objects';
 import type { User } from '../../domain/entities';
 import type {
   Clock,
   Logger,
   PasswordHasher,
-  TokenSigner,
+  RefreshTokenRepository,
   UserRepository,
 } from '../../domain/ports';
+import type { SessionIssuer } from '../session';
 import type { AuthenticateUserInput, AuthenticateUserOutput } from '../dto';
 
 /**
@@ -23,11 +29,11 @@ const MAX_PASSWORD_LENGTH = 128;
 export interface AuthenticateUserDependencies {
   readonly users: UserRepository;
   readonly passwordHasher: PasswordHasher;
-  readonly tokenSigner: TokenSigner;
+  readonly refreshTokens: RefreshTokenRepository;
+  readonly sessionIssuer: SessionIssuer;
   readonly clock: Clock;
   readonly logger: Logger;
   readonly lockoutPolicy: LockoutPolicy;
-  readonly accessTokenTtlSeconds: number;
   /**
    * Hash sem senha correspondente, usado para gastar o mesmo tempo quando não há
    * o que verificar de verdade.
@@ -63,6 +69,21 @@ export class AuthenticateUser {
   constructor(private readonly deps: AuthenticateUserDependencies) {}
 
   public async execute(input: AuthenticateUserInput): Promise<AuthenticateUserOutput> {
+    try {
+      return await this.attempt(input);
+    } catch (error) {
+      // A conta bloqueada existe como tipo próprio para que a decisão fique
+      // explícita no fluxo, mas nunca sai daqui: a resposta é a mesma de senha
+      // errada. Ver ADR 0010.
+      if (error instanceof AccountLockedError) {
+        throw new InvalidCredentialsError();
+      }
+
+      throw error;
+    }
+  }
+
+  private async attempt(input: AuthenticateUserInput): Promise<AuthenticateUserOutput> {
     const now = this.deps.clock.now();
 
     if (input.password.length > MAX_PASSWORD_LENGTH) {
@@ -98,17 +119,19 @@ export class AuthenticateUser {
       throw new InvalidCredentialsError();
     }
 
-    if (user.isLocked(now)) {
+    const lockedUntil = user.lockedUntilIfLocked(now);
+
+    if (lockedUntil !== undefined) {
       // A senha não é verificada — não faz sentido gastar argon2 por uma conta
       // bloqueada — mas o tempo é equalizado para que a resposta continue
       // indistinguível de uma senha errada.
       await this.burnTime(input.password);
       this.deps.logger.warn('auth.login.locked', {
         userId: user.id,
-        lockedUntil: user.lockedUntil?.toISOString(),
+        lockedUntil: lockedUntil.toISOString(),
         ipAddress: input.ipAddress,
       });
-      throw new InvalidCredentialsError();
+      throw new AccountLockedError(lockedUntil);
     }
 
     const matches = await this.deps.passwordHasher.verify(input.password, user.passwordHash);
@@ -120,20 +143,22 @@ export class AuthenticateUser {
 
     await this.registerSuccess(user, input.ipAddress);
 
-    const accessToken = await this.deps.tokenSigner.sign(
-      { subject: user.id },
-      this.deps.accessTokenTtlSeconds,
-    );
+    // Família nova: cada login inicia uma linhagem própria, de modo que revogar
+    // uma sessão comprometida não derruba as outras do mesmo usuário.
+    const session = await this.deps.sessionIssuer.issue(user.id);
+    await this.deps.refreshTokens.save(session.entity);
 
     this.deps.logger.info('auth.login.succeeded', {
       userId: user.id,
+      familyId: session.entity.familyId,
       ipAddress: input.ipAddress,
     });
 
     return {
-      accessToken,
+      accessToken: session.accessToken,
+      refreshToken: session.refreshToken,
       tokenType: 'Bearer',
-      expiresIn: this.deps.accessTokenTtlSeconds,
+      expiresIn: session.expiresIn,
       userId: user.id,
     };
   }

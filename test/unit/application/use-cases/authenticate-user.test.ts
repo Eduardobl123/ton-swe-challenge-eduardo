@@ -5,11 +5,15 @@ import { ConcurrencyError, InvalidCredentialsError } from '../../../../src/domai
 import { Email, LockoutPolicy, PasswordHash } from '../../../../src/domain/value-objects';
 import type { UserRepository } from '../../../../src/domain/ports';
 import { InMemoryUserRepository } from '../../../../src/infrastructure/persistence/in-memory/in-memory-user-repository';
+import { SessionIssuer } from '../../../../src/application/session';
+import { InMemoryRefreshTokenRepository } from '../../../../src/infrastructure/persistence/in-memory/in-memory-refresh-token-repository';
 import {
   FakePasswordHasher,
+  FakeSecureTokenGenerator,
   FakeTokenSigner,
   FixedClock,
   RecordingLogger,
+  SequentialIdGenerator,
 } from '../../../support/fakes';
 
 const AGORA = new Date('2026-09-06T12:00:00.000Z');
@@ -52,6 +56,7 @@ const montar = (overrides: { users?: UserRepository } = {}): Cenario => {
   const signer = new FakeTokenSigner();
   const logger = new RecordingLogger();
   const clock = new FixedClock(AGORA);
+  const refreshTokens = new InMemoryRefreshTokenRepository();
 
   return {
     users,
@@ -62,11 +67,19 @@ const montar = (overrides: { users?: UserRepository } = {}): Cenario => {
     useCase: new AuthenticateUser({
       users,
       passwordHasher: hasher,
-      tokenSigner: signer,
+      refreshTokens,
+      sessionIssuer: new SessionIssuer({
+        refreshTokens,
+        tokenSigner: signer,
+        secureTokens: new FakeSecureTokenGenerator(),
+        idGenerator: new SequentialIdGenerator(),
+        clock,
+        accessTokenTtlSeconds: TTL,
+        refreshTokenTtlSeconds: 604_800,
+      }),
       clock,
       logger,
       lockoutPolicy,
-      accessTokenTtlSeconds: TTL,
       inertPasswordHash: INERTE,
     }),
   };
@@ -100,6 +113,16 @@ describe('AuthenticateUser', () => {
       await entrar(c);
 
       expect(c.signer.signed).toEqual([{ subject: 'user-1', ttlSeconds: TTL }]);
+    });
+
+    it('emite também um refresh token', async () => {
+      const saida = await c.useCase.execute({
+        email: EMAIL,
+        password: SENHA,
+        ipAddress: undefined,
+      });
+
+      expect(saida.refreshToken).toBe('refresh-1');
     });
 
     it('aceita o e-mail em qualquer caixa', async () => {

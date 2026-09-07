@@ -1,4 +1,5 @@
 import { RateLimiter, buildRateLimitPolicies } from '../application/rate-limit';
+import { Logout, RefreshSession, SessionIssuer } from '../application/session';
 import { AuthenticateUser, ListProducts } from '../application/use-cases';
 import { LockoutPolicy } from '../domain/value-objects';
 import type { Logger } from '../domain/ports';
@@ -7,12 +8,15 @@ import {
   Argon2PasswordHasher,
   INERT_PASSWORD_HASH,
   JoseTokenSigner,
+  Sha256TokenGenerator,
 } from '../infrastructure/security';
 import { CursorCodec } from '../infrastructure/persistence/cursor-codec';
 import { InMemoryProductRepository } from '../infrastructure/persistence/in-memory/in-memory-product-repository';
 import { InMemoryRateLimiterStore } from '../infrastructure/persistence/in-memory/in-memory-rate-limiter-store';
+import { InMemoryRefreshTokenRepository } from '../infrastructure/persistence/in-memory/in-memory-refresh-token-repository';
 import { InMemoryUserRepository } from '../infrastructure/persistence/in-memory/in-memory-user-repository';
 import { SystemClock } from '../infrastructure/system/system-clock';
+import { UuidV7IdGenerator } from '../infrastructure/system/uuid-v7-id-generator';
 import type { AppConfig } from '../infrastructure/config/env';
 
 /**
@@ -33,7 +37,6 @@ import type { AppConfig } from '../infrastructure/config/env';
  *
  * | Issue | O que passa a ser montado aqui                                   |
  * | ----- | ---------------------------------------------------------------- |
- * | #4    | `RefreshTokenRepository` e os casos de uso de sessão              |
  * | #7    | Cliente DynamoDB no lugar dos repositórios em memória             |
  * | #9    | `Logger` de verdade (pino) e o cliente do Sentry                  |
  */
@@ -46,6 +49,8 @@ export interface Container {
 
 export interface UseCases {
   readonly authenticateUser: AuthenticateUser;
+  readonly refreshSession: RefreshSession;
+  readonly logout: Logout;
   readonly listProducts: ListProducts;
 }
 
@@ -105,6 +110,19 @@ export function buildContainer(config: AppConfig, logger: Logger): Container {
   // respeita o mesmo contrato, incluindo a concorrência otimista, então trocar
   // a implementação não altera nenhum caso de uso.
   const users = new InMemoryUserRepository();
+  const refreshTokens = new InMemoryRefreshTokenRepository();
+  const secureTokens = new Sha256TokenGenerator();
+  const idGenerator = new UuidV7IdGenerator();
+
+  const sessionIssuer = new SessionIssuer({
+    refreshTokens,
+    tokenSigner,
+    secureTokens,
+    idGenerator,
+    clock,
+    accessTokenTtlSeconds: config.auth.accessTtlSeconds,
+    refreshTokenTtlSeconds: config.auth.refreshTtlSeconds,
+  });
   const products = new InMemoryProductRepository(new CursorCodec(config.auth.jwtSecret));
   const rateLimiterStore = new InMemoryRateLimiterStore();
 
@@ -121,13 +139,21 @@ export function buildContainer(config: AppConfig, logger: Logger): Container {
       authenticateUser: new AuthenticateUser({
         users,
         passwordHasher,
-        tokenSigner,
+        refreshTokens,
+        sessionIssuer,
         clock,
         logger,
         lockoutPolicy: lockout,
-        accessTokenTtlSeconds: config.auth.accessTtlSeconds,
         inertPasswordHash: INERT_PASSWORD_HASH,
       }),
+      refreshSession: new RefreshSession({
+        refreshTokens,
+        secureTokens,
+        sessionIssuer,
+        clock,
+        logger,
+      }),
+      logout: new Logout({ refreshTokens, secureTokens, clock, logger }),
       listProducts: new ListProducts({ products }),
     },
     services: {

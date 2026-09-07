@@ -59,6 +59,13 @@ JWT em troca de fechar uma janela de 15 minutos.
 de um refresh token é detectado no primeiro uso concorrente e derruba a sessão
 inteira. A verificação do access token continua sem tocar no banco.
 
+**Sessões simultâneas não são limitadas.** Cada login inicia uma família
+própria, de modo que sair de um dispositivo não desconecta os outros, mas nada
+impede que um usuário acumule sessões. Limitá-las exigiria consultar todas as
+famílias de um usuário, o que pede um índice adicional na tabela única — custo
+desproporcional para um risco que a revogação por família já contém. Fica
+registrado como escolha, não como esquecimento.
+
 **Negativas e limites conhecidos.** O access token emitido **permanece válido
 até expirar mesmo após o logout** — em até 15 minutos ele deixa de funcionar,
 mas não é cortado no ato. Este é o preço consciente de manter a verificação sem
