@@ -70,8 +70,7 @@ export class RateLimiter {
     }
 
     const elapsedMs = now.getTime() - windows.windowStartedAt.getTime();
-    const previousWeight = Math.max(0, (rule.windowMs - elapsedMs) / rule.windowMs);
-    const estimate = windows.previous * previousWeight + windows.current;
+    const estimate = windows.previous * weightOf(elapsedMs, rule.windowMs) + windows.current;
 
     const resetAt = new Date(windows.windowStartedAt.getTime() + rule.windowMs);
     const allowed = estimate <= rule.limit;
@@ -90,7 +89,9 @@ export class RateLimiter {
       limit: rule.limit,
       remaining: Math.max(0, rule.limit - Math.ceil(estimate)),
       resetAt,
-      retryAfterSeconds: secondsUntil(resetAt, now),
+      retryAfterSeconds: allowed
+        ? toSeconds(resetAt.getTime() - now.getTime())
+        : toSeconds(millisecondsUntilAllowed(rule, windows, elapsedMs)),
     };
   }
 
@@ -125,12 +126,68 @@ export class RateLimiter {
       // faz o cliente bem-comportado desacelerar sozinho.
       remaining: 0,
       resetAt,
-      retryAfterSeconds: secondsUntil(resetAt, now),
+      retryAfterSeconds: toSeconds(rule.windowMs),
     };
   }
 }
 
+/**
+ * Fração da janela anterior que ainda pertence ao intervalo observado.
+ *
+ * O limite superior protege contra relógio que anda para trás: um decorrido
+ * negativo daria peso maior que um e inflaria a estimativa.
+ */
+function weightOf(elapsedMs: number, windowMs: number): number {
+  return Math.min(1, Math.max(0, (windowMs - elapsedMs) / windowMs));
+}
+
+/**
+ * Quanto falta até uma nova requisição caber na cota.
+ *
+ * Devolver o fim da janela seria mais simples e estaria errado. Como a janela
+ * anterior entra ponderada na seguinte, quem excedeu muito continua acima do
+ * limite depois da virada: mandar tentar ali faz o cliente ser recusado de novo
+ * e, pior, essa tentativa realimenta o contador. Um cliente que obedece o
+ * cabeçalho e repete no ritmo do próprio limite se mantém preso sozinho.
+ *
+ * O cálculo resolve a ponderação para o instante em que a estimativa cai abaixo
+ * do limite, contando a requisição que o cliente fará ao voltar.
+ */
+function millisecondsUntilAllowed(
+  rule: RateLimitRule,
+  windows: { readonly current: number; readonly previous: number },
+  elapsedMs: number,
+): number {
+  const { limit, windowMs } = rule;
+  const headroom = limit - windows.current - 1;
+
+  // Cabe nesta janela assim que a anterior tiver decaído o bastante.
+  //
+  // Não há guarda extra aqui porque, tendo havido recusa, o resultado é sempre
+  // positivo: recusar significa que a janela anterior pesa mais do que o espaço
+  // disponível, o que implica um instante alvo à frente do decorrido. Se um dia
+  // deixar de implicar, o piso de um segundo em `toSeconds` mantém a resposta
+  // utilizável em vez de devolver um tempo negativo.
+  if (headroom >= 0 && windows.previous > 0) {
+    const targetElapsedMs = windowMs * (1 - headroom / windows.previous);
+
+    return targetElapsedMs - elapsedMs;
+  }
+
+  // Não cabe nesta janela, o que só acontece quando a contagem atual já passou
+  // do limite sozinha. Na próxima, ela passa a ser a anterior, e o cálculo se
+  // repete para o instante em que ela terá decaído o bastante.
+  //
+  // O piso em zero é defensivo: quando a contagem atual cabe no limite, o
+  // primeiro ramo sempre responde antes, porque a recusa implica que a janela
+  // anterior ainda pesa mais do que o espaço disponível.
+  const untilNextWindowMs = windowMs - elapsedMs;
+  const decayInNextWindowMs = windowMs * Math.max(0, 1 - (limit - 1) / windows.current);
+
+  return untilNextWindowMs + decayInNextWindowMs;
+}
+
 /** Nunca devolve zero: `Retry-After: 0` convida a repetir imediatamente. */
-function secondsUntil(instant: Date, now: Date): number {
-  return Math.max(1, Math.ceil((instant.getTime() - now.getTime()) / 1000));
+function toSeconds(milliseconds: number): number {
+  return Math.max(1, Math.ceil(milliseconds / 1000));
 }

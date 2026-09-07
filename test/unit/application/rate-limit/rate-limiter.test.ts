@@ -156,6 +156,89 @@ describe('RateLimiter', () => {
     });
   });
 
+  describe('Retry-After corresponde ao retorno real da cota', () => {
+    const excederEVoltar = async (excesso: number) => {
+      const c = montar();
+      const produtos: RateLimitRule = { name: 'products.list', limit: 60, windowMs: MINUTO };
+
+      let ultima = await c.limiter.check(produtos, 'user:1');
+      for (let i = 1; i < excesso; i += 1) {
+        ultima = await c.limiter.check(produtos, 'user:1');
+      }
+
+      c.clock.advanceMs(ultima.retryAfterSeconds * 1000);
+
+      return {
+        anunciado: ultima.retryAfterSeconds,
+        aoVoltar: await c.limiter.check(produtos, 'user:1'),
+      };
+    };
+
+    it.each([61, 120, 300, 600])(
+      'quem excede com %i requisições e espera o anunciado é liberado',
+      async (excesso) => {
+        // Devolver a borda da janela seria mais simples e estaria errado: a
+        // janela anterior entra ponderada na seguinte, então quem excedeu muito
+        // continua acima do limite depois da virada. O cliente seria recusado de
+        // novo, e a tentativa realimentaria o contador.
+        const { aoVoltar } = await excederEVoltar(excesso);
+
+        expect(aoVoltar.allowed).toBe(true);
+      },
+    );
+
+    it('o tempo anunciado cresce com o tamanho do excesso', async () => {
+      const pequeno = await excederEVoltar(61);
+      const grande = await excederEVoltar(600);
+
+      expect(grande.anunciado).toBeGreaterThan(pequeno.anunciado);
+    });
+
+    it('quem ignora o anunciado e repete no ritmo do limite continua barrado', async () => {
+      // Comportamento desejado: o cabeçalho é instrução, e quem não a segue não
+      // ganha nada com isso.
+      const c = montar();
+      const produtos: RateLimitRule = { name: 'products.list', limit: 60, windowMs: MINUTO };
+      for (let i = 0; i < 120; i += 1) await c.limiter.check(produtos, 'user:1');
+
+      let liberadas = 0;
+      for (let s = 0; s < 90; s += 1) {
+        c.clock.advanceMs(1_000);
+        if ((await c.limiter.check(produtos, 'user:1')).allowed) liberadas += 1;
+      }
+
+      expect(liberadas).toBe(0);
+    });
+  });
+
+  describe('relógio andando para trás', () => {
+    it('não zera a cota de quem está bloqueado', async () => {
+      // Ajuste de horário para trás acontece em produção. Adotar a janela
+      // recalculada liberaria quem acabou de ser barrado.
+      const c = montar();
+      c.clock.advanceMs(MINUTO + 1_000);
+      await bater(c, 6);
+
+      expect((await c.limiter.check(regra, 'user:1')).allowed).toBe(false);
+
+      c.clock.advanceMs(-2_000);
+
+      expect((await c.limiter.check(regra, 'user:1')).allowed).toBe(false);
+    });
+
+    it('não infla a estimativa com peso maior que um', async () => {
+      const c = montar();
+      c.clock.advanceMs(MINUTO);
+      await bater(c, 1);
+      c.clock.advanceMs(-5_000);
+
+      const decisao = await c.limiter.check(regra, 'user:1');
+
+      expect(decisao.remaining).toBeLessThanOrEqual(regra.limit);
+      expect(decisao.remaining).toBeGreaterThanOrEqual(0);
+    });
+  });
+
   describe('isolamento das cotas', () => {
     it('usuários diferentes não compartilham cota', async () => {
       const c = montar();
@@ -275,7 +358,14 @@ describe('RateLimiter', () => {
 
       expect(excedente.allowed).toBe(false);
       expect(excedente.remaining).toBe(0);
-      expect(excedente.retryAfterSeconds).toBe(60);
+
+      // O anunciado passa da borda do minuto de propósito: a janela anterior
+      // ainda pesa no começo da seguinte, e mandar tentar na borda faria o
+      // cliente ser recusado outra vez.
+      expect(excedente.retryAfterSeconds).toBeGreaterThan(60);
+
+      c.clock.advanceMs(excedente.retryAfterSeconds * 1000);
+      expect((await c.limiter.check(produtos, 'user:1')).allowed).toBe(true);
     });
   });
 });

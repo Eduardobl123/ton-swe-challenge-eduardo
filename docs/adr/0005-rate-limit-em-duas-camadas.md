@@ -45,6 +45,16 @@ TTL para expurgo.
 A resposta traz os cabeçalhos `RateLimit-Limit`, `RateLimit-Remaining` e
 `RateLimit-Reset`, além de `Retry-After` no 429.
 
+O `Retry-After` **não** é a borda da janela. Como a janela anterior entra
+ponderada na seguinte, quem excedeu muito continua acima do limite depois da
+virada: mandar tentar ali faz o cliente ser recusado de novo e, pior, essa
+tentativa realimenta o contador. Um cliente que obedecesse o cabeçalho e
+repetisse no ritmo do próprio limite se manteria preso sozinho, indefinidamente.
+
+O valor devolvido é o instante em que a estimativa de fato cai abaixo do limite,
+resolvendo a ponderação para o tempo decorrido. Com limite de 60 por minuto, seis
+centenas de requisições produzem um `Retry-After` de 115 segundos, e não de 60.
+
 Se o armazenamento do contador falhar, a requisição **passa** (`fail-open`),
 registrando o evento. O comportamento é configurável.
 
@@ -88,6 +98,17 @@ distribuído por igual, o que superestima quando a rajada foi no começo daquela
 janela e subestima quando foi no fim. O erro é pequeno e o benefício é grande —
 dois números por chave em vez de uma lista de instantes que cresce com o
 tráfego e precisa ser podada.
+
+**Requisições recusadas contam.** Quem insiste enquanto bloqueado alimenta o
+próprio contador e demora mais a voltar. É deliberado: o cabeçalho diz quando
+tentar, e ignorá-lo não deveria sair de graça. A alternativa, não contabilizar a
+recusa, exigiria decidir antes de incrementar — ou seja, ler e depois escrever,
+abrindo mão da atomicidade que sustenta a contagem sob concorrência.
+
+Limitar o contador em um teto foi cogitado e descartado por piorar o quadro: com
+a contagem saturada no próprio limite, a estimativa fica em `limite × peso +
+limite`, que só desce ao limite quando o peso zera. O cliente ficaria preso por
+mais tempo, não menos.
 
 **Gatilho para revisar.** Se o volume tornar o custo por requisição relevante,
 migrar a porta `RateLimiterStore` para Redis. A interface não muda.

@@ -61,5 +61,12 @@ function advance(bucket: Bucket | undefined, windowStartedAt: number, windowMs: 
     return { windowStartedAt, current: 1, previous: bucket.current };
   }
 
+  if (bucket.windowStartedAt > windowStartedAt) {
+    // O relógio andou para trás, o que acontece com ajuste de horário. A janela
+    // gravada é a mais recente que se conhece: adotar a calculada zeraria a cota
+    // de quem estava bloqueado.
+    return { ...bucket, current: bucket.current + 1 };
+  }
+
   return { windowStartedAt, current: 1, previous: 0 };
 }
