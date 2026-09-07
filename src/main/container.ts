@@ -115,7 +115,6 @@ export function buildContainer(config: AppConfig, logger: Logger): Container {
   const idGenerator = new UuidV7IdGenerator();
 
   const sessionIssuer = new SessionIssuer({
-    refreshTokens,
     tokenSigner,
     secureTokens,
     idGenerator,

@@ -1,11 +1,5 @@
 import { RefreshToken } from '../../domain/entities';
-import type {
-  Clock,
-  IdGenerator,
-  RefreshTokenRepository,
-  SecureTokenGenerator,
-  TokenSigner,
-} from '../../domain/ports';
+import type { Clock, IdGenerator, SecureTokenGenerator, TokenSigner } from '../../domain/ports';
 
 export interface IssuedSession {
   readonly accessToken: string;
@@ -26,7 +20,6 @@ export interface IssuedSession {
 }
 
 export interface SessionIssuerDependencies {
-  readonly refreshTokens: RefreshTokenRepository;
   readonly tokenSigner: TokenSigner;
   readonly secureTokens: SecureTokenGenerator;
   readonly idGenerator: IdGenerator;
@@ -45,6 +38,10 @@ export interface SessionIssuerDependencies {
  *
  * Não é um caso de uso: não realiza intenção de negócio nenhuma sozinho, apenas
  * monta o que os dois precisam entregar.
+ *
+ * **Não persiste nada.** Quem chama decide como gravar, porque as duas formas
+ * são diferentes: o login grava direto, a renovação grava dentro da rotação
+ * atômica, junto com a marcação do token anterior.
  */
 export class SessionIssuer {
   constructor(private readonly deps: SessionIssuerDependencies) {}

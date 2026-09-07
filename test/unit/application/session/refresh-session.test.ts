@@ -30,7 +30,6 @@ const montar = (): Cenario => {
   const clock = new FixedClock(AGORA);
   const logger = new RecordingLogger();
   const issuer = new SessionIssuer({
-    refreshTokens,
     tokenSigner: new FakeTokenSigner(),
     secureTokens,
     idGenerator: new SequentialIdGenerator(),
@@ -177,6 +176,79 @@ describe('RefreshSession', () => {
 
       expect(resultados.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
       expect(resultados.filter((r) => r.status === 'rejected')).toHaveLength(1);
+    });
+  });
+
+  describe('sessão encerrada não é reuso', () => {
+    it('renovar depois do logout recusa sem alerta de segurança', async () => {
+      // Logout é evento cotidiano. Tratá-lo como reuso encheria o alerta de
+      // ruído até ninguém mais olhar para ele.
+      const token = await entrar(c);
+      await c.logout.execute({ refreshToken: token, ipAddress: undefined });
+
+      await expect(renovar(c, token)).rejects.toBeInstanceOf(InvalidRefreshTokenError);
+
+      expect(c.logger.find('auth.refresh.reuse_detected')).toBeUndefined();
+      expect(c.logger.find('auth.refresh.failed')?.fields.reason).toBe('session_ended');
+    });
+
+    it('token derrubado junto com a família também não alerta', async () => {
+      const original = await entrar(c);
+      const { refreshToken: novo } = await renovar(c, original);
+      await c.logout.execute({ refreshToken: novo, ipAddress: undefined });
+      const antes = c.logger.records.length;
+
+      await renovar(c, novo).catch(() => undefined);
+
+      const novosAlertas = c.logger.records
+        .slice(antes)
+        .filter((r) => r.event === 'auth.refresh.reuse_detected');
+      expect(novosAlertas).toHaveLength(0);
+    });
+
+    it('reuso de verdade continua alertando', async () => {
+      const original = await entrar(c);
+      await renovar(c, original);
+
+      await renovar(c, original).catch(() => undefined);
+
+      expect(c.logger.find('auth.refresh.reuse_detected')?.level).toBe('error');
+    });
+
+    it('insistir com o token roubado não revoga a família de novo', async () => {
+      // Repetir a varredura da família a cada tentativa daria a quem ataca uma
+      // forma barata de gerar carga no banco.
+      const original = await entrar(c);
+      await renovar(c, original);
+
+      let revogacoes = 0;
+      const contando = new RefreshSession({
+        refreshTokens: {
+          findByHash: (h) => c.refreshTokens.findByHash(h),
+          save: (t) => c.refreshTokens.save(t),
+          rotate: (a, b) => c.refreshTokens.rotate(a, b),
+          revokeFamily: (f, n) => {
+            revogacoes += 1;
+            return c.refreshTokens.revokeFamily(f, n);
+          },
+        },
+        secureTokens: new FakeSecureTokenGenerator(),
+        sessionIssuer: c.issuer,
+        clock: c.clock,
+        logger: c.logger,
+      });
+
+      for (let i = 0; i < 5; i += 1) {
+        await contando
+          .execute({ refreshToken: original, ipAddress: undefined })
+          .catch(() => undefined);
+      }
+
+      expect(revogacoes).toBe(1);
+      // O alerta, esse sim, se repete: cada tentativa é um dado sobre o ataque.
+      expect(
+        c.logger.records.filter((r) => r.event === 'auth.refresh.reuse_detected'),
+      ).toHaveLength(5);
     });
   });
 

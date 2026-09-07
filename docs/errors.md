@@ -37,6 +37,12 @@ recebem a mesma resposta, com o mesmo corpo e o mesmo tempo. Ver
 ao atacante que ele foi detectado, e a reação — revogar a família inteira — é
 mais útil do que a notificação. Ver [ADR 0006](adr/0006-jwt-e-refresh-token.md).
 
+Reuso é definido por **token rotacionado apresentado outra vez**, e não por
+token inutilizável. Um token apenas revogado significa sessão encerrada, por
+logout ou pela queda coletiva da família, e recebe a mesma recusa sem alerta
+nenhum. A distinção existe porque logout é evento cotidiano: tratá-lo como
+incidente encheria o alerta de ruído até ninguém mais olhar para ele.
+
 **`CONCURRENT_MODIFICATION`.** É a persistência dizendo que o registro mudou
 embaixo, não uma decisão de negócio. O caso de uso escolhe o que fazer: no login,
 a escolha é **não** repetir a tentativa, porque insistir numa tentativa

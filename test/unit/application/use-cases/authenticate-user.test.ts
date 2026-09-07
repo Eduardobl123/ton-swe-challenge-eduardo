@@ -69,7 +69,6 @@ const montar = (overrides: { users?: UserRepository } = {}): Cenario => {
       passwordHasher: hasher,
       refreshTokens,
       sessionIssuer: new SessionIssuer({
-        refreshTokens,
         tokenSigner: signer,
         secureTokens: new FakeSecureTokenGenerator(),
         idGenerator: new SequentialIdGenerator(),

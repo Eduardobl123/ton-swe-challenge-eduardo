@@ -3,6 +3,7 @@ import {
   InvalidRefreshTokenError,
   RefreshTokenReuseDetectedError,
 } from '../../domain/errors';
+import type { RefreshToken } from '../../domain/entities';
 import type {
   Clock,
   Logger,
@@ -86,8 +87,23 @@ export class RefreshSession {
       throw new InvalidRefreshTokenError();
     }
 
-    if (stored.wasAlreadyUsed()) {
-      await this.revokeFamilyAndReport(stored.userId, stored.familyId, now, input.ipAddress);
+    if (stored.isRotated()) {
+      // Reuso de verdade: este token já foi trocado por outro, e alguém o
+      // apresentou de novo.
+      await this.reportReuse(stored, now, input.ipAddress);
+    }
+
+    if (stored.isRevoked()) {
+      // Revogado sem ter sido rotacionado significa sessão encerrada — logout,
+      // ou queda coletiva da família. Não é reuso, e tratar como tal encheria o
+      // alerta de segurança de eventos cotidianos até ninguém mais olhar para
+      // ele.
+      this.deps.logger.info('auth.refresh.failed', {
+        reason: 'session_ended',
+        userId: stored.userId,
+        ipAddress: input.ipAddress,
+      });
+      throw new InvalidRefreshTokenError();
     }
 
     if (stored.isExpired(now)) {
@@ -115,7 +131,7 @@ export class RefreshSession {
       // token primeiro — indistinguível de reuso, e tratado igual. Deixar
       // passar aqui permitiria que duas partes seguissem com sessões válidas
       // derivadas da mesma credencial.
-      await this.revokeFamilyAndReport(stored.userId, stored.familyId, now, input.ipAddress);
+      await this.reportReuse(stored, now, input.ipAddress);
     }
 
     this.deps.logger.info('auth.refresh.succeeded', {
@@ -135,25 +151,32 @@ export class RefreshSession {
   /**
    * Derruba a sessão inteira e registra o incidente.
    *
+   * A revogação só acontece enquanto a família ainda estiver viva. Quem insiste
+   * com um token roubado depois que a sessão já caiu não deve conseguir disparar
+   * uma varredura da família a cada tentativa — seria carga barata de provocar
+   * no banco. O alerta, esse sim, se repete: cada tentativa é um dado sobre o
+   * ataque em curso.
+   *
    * @throws {RefreshTokenReuseDetectedError} sempre. O tipo específico existe
    *   para que o motivo fique explícito no fluxo e nos testes; `execute` o
    *   converte na resposta genérica antes de sair.
    */
-  private async revokeFamilyAndReport(
-    userId: string,
-    familyId: string,
+  private async reportReuse(
+    stored: RefreshToken,
     now: Date,
     ipAddress: string | undefined,
   ): Promise<never> {
-    await this.deps.refreshTokens.revokeFamily(familyId, now);
+    if (!stored.isRevoked()) {
+      await this.deps.refreshTokens.revokeFamily(stored.familyId, now);
+    }
 
     // Evento de segurança: identifica usuário e família, jamais o token.
     this.deps.logger.error('auth.refresh.reuse_detected', {
-      userId,
-      familyId,
+      userId: stored.userId,
+      familyId: stored.familyId,
       ipAddress,
     });
 
-    throw new RefreshTokenReuseDetectedError(userId, familyId);
+    throw new RefreshTokenReuseDetectedError(stored.userId, stored.familyId);
   }
 }
