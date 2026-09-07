@@ -113,10 +113,15 @@ cd ton-swe-challenge-eduardo
 
 nvm use              # Node 24.20.0
 npm ci               # instala e prepara os hooks de commit
-cp .env.example .env # ajuste o JWT_SECRET antes de subir
+cp .env.example .env # já vem com valores que sobem; troque o JWT_SECRET
 
 npm run dev          # valida a configuração e sobe o servidor
 ```
+
+O `.env` é lido pelo próprio Node, via `--env-file-if-exists`, sem dependência
+de carregamento no código da aplicação. Variável já exportada no shell vence a
+do arquivo, que é a precedência esperada por quem sobrescreve uma configuração
+pontualmente. Sem o arquivo, a aplicação usa só o ambiente.
 
 A API sobe com dados de demonstração já carregados, então dá para exercitá-la
 imediatamente. Se faltar uma variável ou o `JWT_SECRET` for curto demais, a

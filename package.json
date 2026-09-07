@@ -9,9 +9,9 @@
     "node": ">=24.0.0 <25"
   },
   "scripts": {
-    "dev": "tsx watch src/main/server.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/main/server.ts",
     "build": "tsup",
-    "start": "node dist/server.js",
+    "start": "node --env-file-if-exists=.env dist/server.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -27,8 +27,8 @@
     "test:coverage:all": "vitest run --config vitest.coverage.config.ts --coverage",
     "prepare": "husky",
     "openapi:export": "tsx scripts/export-openapi.ts",
-    "db:create": "tsx scripts/create-table.ts",
-    "db:seed": "tsx scripts/seed.ts",
+    "db:create": "tsx --env-file-if-exists=.env scripts/create-table.ts",
+    "db:seed": "tsx --env-file-if-exists=.env scripts/seed.ts",
     "lint:no-scan": "! grep -rn 'ScanCommand' src/ || (echo 'Varredura no código de produção: use Query com índice.' && exit 1)",
     "package:lambda": "tsx scripts/package-lambda.ts",
     "verify:lambda": "tsx scripts/verify-lambda-artifact.ts"
