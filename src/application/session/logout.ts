@@ -7,6 +7,8 @@ import type {
 
 export interface LogoutInput {
   readonly refreshToken: string;
+  /** Usuário autenticado na requisição, dono esperado do token. */
+  readonly userId: string;
   readonly ipAddress: string | undefined;
 }
 
@@ -40,6 +42,14 @@ export interface LogoutDependencies {
  * intenção que o cliente já cumpriu ao descartar a credencial; devolver erro só
  * atrapalharia quem está saindo, e distinguir os casos informaria se um token
  * existe a quem apenas quer descobrir isso.
+ *
+ * ## Posse
+ *
+ * O token precisa pertencer a quem está autenticado. Sem essa conferência, a
+ * rota exigiria credencial e não usaria a identidade para nada — cerimônia que
+ * sugere uma garantia inexistente. Com ela, apresentar o token de outra pessoa
+ * vira evento de segurança registrado, do mesmo modo que o reuso na renovação,
+ * e nada é revogado.
  */
 export class Logout {
   constructor(private readonly deps: LogoutDependencies) {}
@@ -50,6 +60,17 @@ export class Logout {
 
     if (stored === null) {
       this.deps.logger.info('auth.logout.unknown_token', { ipAddress: input.ipAddress });
+      return;
+    }
+
+    if (stored.userId !== input.userId) {
+      // Resposta idêntica à do caminho feliz: informar a divergência diria a
+      // quem sonda que aquele token existe e a quem pertence.
+      this.deps.logger.error('auth.logout.token_owner_mismatch', {
+        userId: input.userId,
+        tokenOwnerId: stored.userId,
+        ipAddress: input.ipAddress,
+      });
       return;
     }
 

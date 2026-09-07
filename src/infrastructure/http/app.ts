@@ -29,6 +29,23 @@ import { productRoutes } from './routes/products.routes';
 const BODY_LIMIT_BYTES = 64 * 1024;
 
 /**
+ * Confia em um número exato de saltos, nunca na cadeia inteira.
+ *
+ * Com confiança irrestrita o Fastify adota o **primeiro** item de
+ * `X-Forwarded-For`, que é escrito por quem faz a requisição. Bastaria variar o
+ * cabeçalho a cada tentativa para anular a cota por origem — a defesa contra
+ * força bruta no login. Contando saltos, o valor adotado é o que o proxy
+ * imediatamente à frente escreveu, e esse não é escolhido pelo cliente.
+ *
+ * A função existe porque a tipagem do Fastify aceita apenas booleano, texto ou
+ * predicado, embora o runtime também aceite um número. O predicado expressa a
+ * mesma semântica sem precisar de asserção.
+ */
+function trustHops(hops: number): (address: string, hop: number) => boolean {
+  return (_address, hop) => hop < hops;
+}
+
+/**
  * Monta a aplicação HTTP.
  *
  * A função **não sabe onde roda**. Ela devolve uma instância pronta, e quem
@@ -42,10 +59,7 @@ export async function buildApp(container: Container): Promise<FastifyInstance> {
   const app = Fastify({
     logger: false,
     bodyLimit: BODY_LIMIT_BYTES,
-    // Atrás do API Gateway, o endereço real do cliente vem no cabeçalho
-    // encaminhado. Sem isto, a cota por origem contaria todo mundo como se
-    // fosse o próprio balanceador (issue #10).
-    trustProxy: config.isProduction,
+    trustProxy: trustHops(config.http.trustedProxyHops),
   }).withTypeProvider<ZodTypeProvider>();
 
   app.setValidatorCompiler(validatorCompiler);
@@ -58,10 +72,7 @@ export async function buildApp(container: Container): Promise<FastifyInstance> {
 
   await app.register(requestIdPlugin);
   await app.register(errorHandlerPlugin, { logger: container.logger });
-  await app.register(authPlugin, {
-    tokenSigner: container.services.tokenSigner,
-    logger: container.logger,
-  });
+  await app.register(authPlugin, { tokenSigner: container.services.tokenSigner });
   await app.register(rateLimitPlugin, { rateLimiter: container.services.rateLimiter });
 
   await app.register(swagger, {

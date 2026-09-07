@@ -4,6 +4,7 @@ import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { RateLimitRule } from '../../../application/rate-limit';
 import type { Container } from '../../../main/container';
+import { authenticatedUserId } from '../plugins/auth';
 import { problemResponses } from '../schemas/common.schemas';
 import {
   loginBodySchema,
@@ -95,6 +96,7 @@ export const authRoutes =
       async (request, reply) => {
         await useCases.logout.execute({
           refreshToken: request.body.refreshToken,
+          userId: authenticatedUserId(request),
           ipAddress: request.ip,
         });
 

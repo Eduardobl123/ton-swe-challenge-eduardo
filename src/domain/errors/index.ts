@@ -1,6 +1,11 @@
 export { AppError, DomainError } from './app-error';
 export { ERROR_CODES, type ErrorCode } from './error-code';
 
+export {
+  AccessTokenExpiredError,
+  AccessTokenInvalidError,
+  UnauthenticatedError,
+} from './access-token.error';
 export { AccountLockedError } from './account-locked.error';
 export { ConcurrencyError } from './concurrency.error';
 export { InvalidCredentialsError } from './invalid-credentials.error';

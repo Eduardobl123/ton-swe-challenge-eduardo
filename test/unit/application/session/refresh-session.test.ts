@@ -184,7 +184,7 @@ describe('RefreshSession', () => {
       // Logout é evento cotidiano. Tratá-lo como reuso encheria o alerta de
       // ruído até ninguém mais olhar para ele.
       const token = await entrar(c);
-      await c.logout.execute({ refreshToken: token, ipAddress: undefined });
+      await c.logout.execute({ refreshToken: token, userId: 'user-1', ipAddress: undefined });
 
       await expect(renovar(c, token)).rejects.toBeInstanceOf(InvalidRefreshTokenError);
 
@@ -195,7 +195,7 @@ describe('RefreshSession', () => {
     it('token derrubado junto com a família também não alerta', async () => {
       const original = await entrar(c);
       const { refreshToken: novo } = await renovar(c, original);
-      await c.logout.execute({ refreshToken: novo, ipAddress: undefined });
+      await c.logout.execute({ refreshToken: novo, userId: 'user-1', ipAddress: undefined });
       const antes = c.logger.records.length;
 
       await renovar(c, novo).catch(() => undefined);
@@ -335,7 +335,7 @@ describe('Logout', () => {
     const c = montar();
     const token = await entrar(c);
 
-    await c.logout.execute({ refreshToken: token, ipAddress: undefined });
+    await c.logout.execute({ refreshToken: token, userId: 'user-1', ipAddress: undefined });
 
     await expect(renovar(c, token)).rejects.toBeInstanceOf(InvalidRefreshTokenError);
   });
@@ -345,7 +345,7 @@ describe('Logout', () => {
     const original = await entrar(c);
     const { refreshToken: novo } = await renovar(c, original);
 
-    await c.logout.execute({ refreshToken: novo, ipAddress: undefined });
+    await c.logout.execute({ refreshToken: novo, userId: 'user-1', ipAddress: undefined });
 
     await expect(renovar(c, novo)).rejects.toBeInstanceOf(InvalidRefreshTokenError);
   });
@@ -357,7 +357,7 @@ describe('Logout', () => {
     const primeira = await entrar(c, 'user-1');
     const segunda = await entrar(c, 'user-1');
 
-    await c.logout.execute({ refreshToken: primeira, ipAddress: undefined });
+    await c.logout.execute({ refreshToken: primeira, userId: 'user-1', ipAddress: undefined });
 
     await expect(renovar(c, segunda)).resolves.toBeDefined();
   });
@@ -369,7 +369,7 @@ describe('Logout', () => {
     const c = montar();
 
     await expect(
-      c.logout.execute({ refreshToken: 'nunca-emitido', ipAddress: undefined }),
+      c.logout.execute({ refreshToken: 'nunca-emitido', userId: 'user-1', ipAddress: undefined }),
     ).resolves.toBeUndefined();
     expect(c.logger.events()).toContain('auth.logout.unknown_token');
   });
@@ -378,10 +378,10 @@ describe('Logout', () => {
     const c = montar();
     const token = await entrar(c);
 
-    await c.logout.execute({ refreshToken: token, ipAddress: undefined });
+    await c.logout.execute({ refreshToken: token, userId: 'user-1', ipAddress: undefined });
 
     await expect(
-      c.logout.execute({ refreshToken: token, ipAddress: undefined }),
+      c.logout.execute({ refreshToken: token, userId: 'user-1', ipAddress: undefined }),
     ).resolves.toBeUndefined();
   });
 
@@ -389,7 +389,7 @@ describe('Logout', () => {
     const c = montar();
     const token = await entrar(c);
 
-    await c.logout.execute({ refreshToken: token, ipAddress: undefined });
+    await c.logout.execute({ refreshToken: token, userId: 'user-1', ipAddress: undefined });
 
     expect(c.logger.dump()).not.toContain(token);
   });

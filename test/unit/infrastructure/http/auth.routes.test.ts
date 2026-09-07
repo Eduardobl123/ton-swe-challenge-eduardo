@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { User } from '../../../../src/domain/entities';
+import { Email } from '../../../../src/domain/value-objects';
 import {
   DEMO_EMAIL,
   DEMO_PASSWORD,
@@ -200,6 +202,45 @@ describe('rotas de autenticação', () => {
       });
 
       expect(resposta.statusCode).toBe(401);
+    });
+
+    it('não encerra a sessão de outro usuário', async () => {
+      // Regressão do achado P2. A rota exigia credencial e não usava a
+      // identidade para nada, então bastava apresentar o token alheio.
+      const { app, container } = await buildTestApp();
+      await container.seeding.users.save(
+        User.create({
+          id: container.seeding.idGenerator.next(),
+          email: Email.create('outro@ton.com.br'),
+          passwordHash: await container.seeding.passwordHasher.hash(DEMO_PASSWORD),
+          failedLoginAttempts: 0,
+          lockedUntil: undefined,
+          createdAt: container.seeding.clock.now(),
+          version: 0,
+        }),
+      );
+
+      const meu = await login(app);
+      const alheio = await login(app, 'outro@ton.com.br', DEMO_PASSWORD);
+
+      const resposta = await app.inject({
+        method: 'POST',
+        url: '/v1/auth/logout',
+        headers: bearer(meu.accessToken),
+        payload: { refreshToken: alheio.refreshToken },
+      });
+
+      // Resposta idêntica à do caminho feliz: revelar a divergência diria a
+      // quem sonda que aquele token existe.
+      expect(resposta.statusCode).toBe(204);
+
+      const aindaVale = await app.inject({
+        method: 'POST',
+        url: '/v1/auth/refresh',
+        payload: { refreshToken: alheio.refreshToken },
+      });
+      expect(aindaVale.statusCode).toBe(200);
+      await app.close();
     });
 
     it('exige autenticação', async () => {

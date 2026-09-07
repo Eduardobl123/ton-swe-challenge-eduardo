@@ -74,6 +74,32 @@ describe('GET /v1/products', () => {
       expect(resposta.json()).toMatchObject({ code: 'TOKEN_INVALID' });
     });
 
+    it.each([
+      ['emissor divergente', 'outro-servico', 'ton-swe-challenge-api'],
+      ['público divergente', 'ton-swe-challenge', 'outra-api'],
+    ])('recusa %s como inválido, não como expirado', async (_caso, issuer, audience) => {
+      // Regressão do achado P3. A classificação era feita pela mensagem da
+      // biblioteca, e "unexpected" contém a mesma sequência que "expired": o
+      // cliente era mandado renovar quando deveria autenticar de novo.
+      const token = await new SignJWT()
+        .setProtectedHeader({ alg: 'HS256' })
+        .setSubject('user-1')
+        .setIssuer(issuer)
+        .setAudience(audience)
+        .setIssuedAt()
+        .setExpirationTime('15m')
+        .setJti('j')
+        .sign(new TextEncoder().encode(SECRET));
+
+      const resposta = await ctx.app.inject({
+        method: 'GET',
+        url: '/v1/products',
+        headers: bearer(token),
+      });
+
+      expect(resposta.json()).toMatchObject({ code: 'TOKEN_INVALID' });
+    });
+
     it('distingue token expirado de token inválido', async () => {
       // O cliente já tem o token e pode lê-lo sozinho, então dizer que expirou
       // não vaza nada — e é o que lhe diz para renovar em vez de pedir a senha.

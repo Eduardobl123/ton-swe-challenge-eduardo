@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { SignJWT, jwtVerify } from 'jose';
+import { SignJWT, errors as joseErrors, jwtVerify } from 'jose';
+import { AccessTokenExpiredError, AccessTokenInvalidError } from '../../domain/errors';
+import type { JWTPayload } from 'jose';
 import type { AccessTokenClaims, AccessTokenInput, Clock, TokenSigner } from '../../domain/ports';
 
 /**
@@ -65,30 +67,26 @@ export class JoseTokenSigner implements TokenSigner {
   }
 
   /**
-   * @throws quando a assinatura, o emissor, o público, o algoritmo ou a
-   *   validade não conferem, ou quando falta uma claim obrigatória. Quem chama
-   *   trata qualquer falha como "não autenticado", sem distinguir o motivo.
+   * @throws {AccessTokenExpiredError} quando o token venceu.
+   * @throws {AccessTokenInvalidError} para qualquer outra recusa — assinatura,
+   *   emissor, público, algoritmo ou claim obrigatória ausente.
+   *
+   * A tradução acontece aqui, e não em quem chama. Classificar pela mensagem da
+   * exceção da biblioteca seria frágil: a palavra "unexpected", usada em
+   * divergência de emissor, contém a mesma sequência que "expired", e um token
+   * de outro emissor era reportado como vencido — mandando o cliente renovar
+   * em vez de autenticar de novo.
    */
   public async verify(token: string): Promise<AccessTokenClaims> {
-    const { payload } = await jwtVerify(token, this.secret, {
-      issuer: this.issuer,
-      audience: this.audience,
-      algorithms: [ALGORITHM],
-      // A validade também é conferida contra o relógio injetado. Sem isto,
-      // emitir pelo relógio de teste e verificar pelo da parede daria resultados
-      // incoerentes, e a expiração continuaria intestável.
-      currentDate: this.clock.now(),
-    });
+    const payload = await this.decode(token);
 
     const { sub, jti, iat, exp } = payload;
 
     // Um token pode ter assinatura, emissor e público válidos e ainda assim não
     // servir: basta ter sido emitido por outro serviço que compartilha o
-    // segredo, ou por uma versão anterior deste emissor. Conferir aqui é o que
-    // permite tipar o retorno sem asserção — o compilador passa a saber o que
-    // foi verificado, em vez de acreditar.
+    // segredo, ou por uma versão anterior deste emissor.
     if (sub === undefined || jti === undefined || iat === undefined || exp === undefined) {
-      throw new Error('Access token sem as claims obrigatórias.');
+      throw new AccessTokenInvalidError();
     }
 
     return {
@@ -103,5 +101,31 @@ export class JoseTokenSigner implements TokenSigner {
       iss: this.issuer,
       aud: this.audience,
     };
+  }
+
+  /**
+   * Verifica assinatura, emissor, público, algoritmo e validade.
+   *
+   * A validade é conferida contra o relógio injetado, e não contra o da parede:
+   * sem isso, emitir com relógio de teste e verificar com o real daria
+   * resultados incoerentes, e a expiração ficaria intestável.
+   */
+  private async decode(token: string): Promise<JWTPayload> {
+    try {
+      const { payload } = await jwtVerify(token, this.secret, {
+        issuer: this.issuer,
+        audience: this.audience,
+        algorithms: [ALGORITHM],
+        currentDate: this.clock.now(),
+      });
+
+      return payload;
+    } catch (error) {
+      if (error instanceof joseErrors.JWTExpired) {
+        throw new AccessTokenExpiredError();
+      }
+
+      throw new AccessTokenInvalidError();
+    }
   }
 }

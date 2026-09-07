@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SignJWT } from 'jose';
 import { JoseTokenSigner } from '../../../../src/infrastructure/security';
 import { FixedClock } from '../../../support/fakes';
+import { AccessTokenExpiredError, AccessTokenInvalidError } from '../../../../src/domain/errors';
 
 const SECRET = 'um-segredo-de-teste-com-mais-de-trinta-e-dois-caracteres';
 const AGORA = new Date('2026-09-06T12:00:00.000Z');
@@ -61,6 +62,35 @@ describe('JoseTokenSigner', () => {
       const claims = await signer.verify(await signer.sign({ subject: 'user-1' }, 900));
 
       expect(claims.exp - claims.iat).toBe(900);
+    });
+  });
+
+  describe('classificação da recusa', () => {
+    // O código devolvido decide o que o cliente faz: renovar ou autenticar de
+    // novo. Classificar pela mensagem da biblioteca reportava emissor errado
+    // como vencido, porque "unexpected" contém a mesma sequência que "expired".
+    it('token vencido é recusado como expirado', async () => {
+      const relogio = new FixedClock(AGORA);
+      const emissor = new JoseTokenSigner({ ...OPTIONS, clock: relogio });
+      const token = await emissor.sign({ subject: 'user-1' }, 900);
+      relogio.advanceMs(901_000);
+
+      await expect(emissor.verify(token)).rejects.toBeInstanceOf(AccessTokenExpiredError);
+    });
+
+    it.each([
+      ['emissor divergente', { issuer: 'outro-servico' }],
+      ['público divergente', { audience: 'outra-api' }],
+      ['segredo divergente', { secret: 'b'.repeat(48) }],
+    ])('%s é recusado como inválido, não como expirado', async (_caso, override) => {
+      const outro = new JoseTokenSigner({ ...OPTIONS, ...override });
+
+      const erro = await signer
+        .verify(await outro.sign({ subject: 'user-1' }, 900))
+        .catch((e: Error) => e);
+
+      expect(erro).toBeInstanceOf(AccessTokenInvalidError);
+      expect(erro).not.toBeInstanceOf(AccessTokenExpiredError);
     });
   });
 
@@ -129,7 +159,7 @@ describe('JoseTokenSigner', () => {
         .setExpirationTime('15m')
         .sign(key);
 
-      await expect(signer.verify(semJti)).rejects.toThrow(/claims obrigatórias/);
+      await expect(signer.verify(semJti)).rejects.toBeInstanceOf(AccessTokenInvalidError);
     });
 
     it('rejeita texto que não é um token', async () => {

@@ -11,7 +11,7 @@ import type { AuthenticatedUser } from './plugins/auth';
 declare module 'fastify' {
   interface FastifyInstance {
     /** Gancho `onRequest` que exige e valida o access token. */
-    authenticate: (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    authenticate: (request: FastifyRequest) => Promise<void>;
     /** Fábrica de gancho `onRequest` que aplica uma política de limite. */
     enforceRateLimit: (
       rule: RateLimitRule,

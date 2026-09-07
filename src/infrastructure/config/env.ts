@@ -45,6 +45,7 @@ const envSchema = z.object({
   RATE_LIMIT_REFRESH_PER_MINUTE: z.coerce.number().int().positive().default(20),
   RATE_LIMIT_FAIL_OPEN: booleanFromString.default(true),
 
+  TRUSTED_PROXY_HOPS: z.coerce.number().int().min(0).max(10).default(0),
   CORS_ORIGINS: z.string().min(1).default('*'),
   SWAGGER_ENABLED: booleanFromString.default(true),
 
@@ -69,6 +70,19 @@ export interface AppConfig {
     readonly port: number;
     readonly corsOrigins: readonly string[];
     readonly swaggerEnabled: boolean;
+    /**
+     * Quantos proxies existem à frente da aplicação.
+     *
+     * Zero significa não confiar em cabeçalho de encaminhamento algum, que é o
+     * correto quando a aplicação recebe conexões diretas. Atrás do API Gateway
+     * o valor é 1.
+     *
+     * Confiar na cadeia inteira seria pior que não confiar em nada: o primeiro
+     * item de `X-Forwarded-For` é escrito por quem faz a requisição, então
+     * qualquer cliente escolheria a própria identidade e a cota por origem
+     * deixaria de existir.
+     */
+    readonly trustedProxyHops: number;
   };
   readonly log: {
     readonly level: LogLevel;
@@ -150,6 +164,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
         .map((origin) => origin.trim())
         .filter((origin) => origin.length > 0),
       swaggerEnabled: env.SWAGGER_ENABLED,
+      trustedProxyHops: env.TRUSTED_PROXY_HOPS,
     },
     log: {
       level: env.LOG_LEVEL,

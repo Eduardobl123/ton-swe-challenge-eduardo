@@ -22,6 +22,14 @@ compilação, em vez de virar um 500 genérico descoberto em produção.
 | `CONCURRENT_MODIFICATION`      | `ConcurrencyError`               | —    | **não** → depende do caso de uso  |
 | `RATE_LIMIT_EXCEEDED`          | `RateLimitExceededError`         | 429  | sim                               |
 
+## Por que expirado e inválido são códigos diferentes
+
+Aqui a distinção é deliberada na direção oposta: ela **deve** ser visível. O
+cliente já tem o token e pode lê-lo sozinho, então dizer que expirou não revela
+nada — e é o que o instrui a renovar em vez de pedir a senha ao usuário. Token
+inválido manda autenticar de novo, porque renovar não resolveria: o próximo
+teria o mesmo problema.
+
 ## Por que três erros nunca chegam ao cliente
 
 A coluna "exposto" não é detalhe de implementação. Ela carrega as decisões de

@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  DEMO_EMAIL,
+  DEMO_PASSWORD,
   bearer,
   buildAppWithFailingList,
   buildAppWithReadiness,
@@ -198,6 +200,52 @@ describe('aplicação HTTP', () => {
 
       expect(resposta.json()).toMatchObject({ requestId: 'correlacao-123' });
       expect(resposta.headers['x-request-id']).toBe('correlacao-123');
+    });
+  });
+
+  describe('confiança em proxy', () => {
+    it('por padrão ignora o cabeçalho de encaminhamento', async () => {
+      const { app } = await buildTestApp({ RATE_LIMIT_LOGIN_PER_MINUTE: '2' });
+
+      const codigos: number[] = [];
+      for (let i = 0; i < 5; i += 1) {
+        const resposta = await app.inject({
+          method: 'POST',
+          url: '/v1/auth/login',
+          headers: { 'x-forwarded-for': `203.0.113.${String(i)}` },
+          payload: { email: DEMO_EMAIL, password: DEMO_PASSWORD },
+        });
+        codigos.push(resposta.statusCode);
+      }
+
+      expect(codigos.filter((c) => c === 429).length).toBeGreaterThan(0);
+      await app.close();
+    });
+
+    it('com um salto confiável, adota o valor escrito pelo proxy, não pelo cliente', async () => {
+      // Regressão do achado P1. Confiar na cadeia inteira faria o Fastify usar
+      // o primeiro item, que quem faz a requisição escolhe — e variar o
+      // cabeçalho anularia a cota por origem.
+      const { app } = await buildTestApp({
+        TRUSTED_PROXY_HOPS: '1',
+        RATE_LIMIT_LOGIN_PER_MINUTE: '2',
+      });
+
+      const codigos: number[] = [];
+      for (let i = 0; i < 5; i += 1) {
+        const resposta = await app.inject({
+          method: 'POST',
+          url: '/v1/auth/login',
+          // O cliente tenta se passar por um endereço novo; o proxy anexa o
+          // real ao final da cadeia.
+          headers: { 'x-forwarded-for': `203.0.113.${String(i)}, 198.51.100.7` },
+          payload: { email: DEMO_EMAIL, password: DEMO_PASSWORD },
+        });
+        codigos.push(resposta.statusCode);
+      }
+
+      expect(codigos.filter((c) => c === 429).length).toBeGreaterThan(0);
+      await app.close();
     });
   });
 
