@@ -17,11 +17,23 @@ describe('buildContainer', () => {
     expect(montar({ PORT: '8080' }).config.http.port).toBe(8080);
   });
 
-  it('monta os casos de uso', () => {
-    const { useCases } = montar();
+  it('monta os casos de uso e os serviços de borda', () => {
+    const { useCases, services } = montar();
 
     expect(useCases.authenticateUser).toBeDefined();
     expect(useCases.listProducts).toBeDefined();
+    expect(services.rateLimiter).toBeDefined();
+  });
+
+  it('constrói as políticas de limite a partir do ambiente', () => {
+    const { rateLimit } = montar({
+      RATE_LIMIT_LOGIN_PER_MINUTE: '3',
+      RATE_LIMIT_PRODUCTS_PER_MINUTE: '30',
+    }).policies;
+
+    expect(rateLimit.login.limit).toBe(3);
+    expect(rateLimit.productsList.limit).toBe(30);
+    expect(rateLimit.refresh.limit).toBe(20);
   });
 
   describe('política de bloqueio', () => {

@@ -26,8 +26,21 @@ tráfego antes que ela chegue à aplicação.
 
 **Na aplicação**, um contador de janela deslizante atrás da porta
 `RateLimiterStore`, com chave `user:<id>` nas rotas autenticadas e `ip:<addr>`
-no login e na renovação de sessão. O adaptador DynamoDB usa `UpdateItem` com
-`ADD` — uma escrita atômica, sem leitura prévia — e TTL para expurgo.
+no login e na renovação de sessão. O nome da política entra na chave, para que
+login e renovação vindos do mesmo endereço não dividam a mesma cota.
+
+O algoritmo fica na camada de aplicação, não no adaptador. O armazenamento
+apenas conta e devolve os totais das duas janelas relevantes; quem decide se a
+requisição passa é a política. Assim existe uma implementação só do cálculo,
+testável com relógio controlado, em vez de uma cópia em cada adaptador com
+risco de divergirem.
+
+O custo por requisição é uma escrita atômica na janela em curso mais uma
+leitura da janela anterior. A intenção original era uma única escrita, mas
+janela deslizante exige conhecer a contagem anterior — sem ela o que se tem é
+janela fixa, com o defeito descrito abaixo. No DynamoDB isso é `UpdateItem` com
+`ADD` e `ReturnValues`, mais um `GetItem` no item da janela anterior, ambos com
+TTL para expurgo.
 
 A resposta traz os cabeçalhos `RateLimit-Limit`, `RateLimit-Remaining` e
 `RateLimit-Reset`, além de `Retry-After` no 429.
@@ -41,9 +54,11 @@ registrando o evento. O comportamento é configurável.
 porque o limite é global por estágio: um único cliente abusivo consumiria a cota
 de todos, e não há como diferenciar cota de login de cota de listagem.
 
-**Janela fixa.** Um contador por minuto cheio. Descartada pelo efeito de borda:
-um cliente pode emitir o dobro do limite na virada da janela, concentrando a
-rajada exatamente onde ela mais dói.
+**Janela fixa.** Um contador por minuto cheio, e uma escrita por requisição sem
+leitura nenhuma. Descartada pelo efeito de borda: quem envia a cota inteira nos
+últimos instantes de um minuto e a cota inteira nos primeiros do seguinte passa
+com o dobro em poucos segundos, concentrando a rajada exatamente onde ela mais
+dói. A leitura extra por requisição é o preço de fechar isso.
 
 **Token bucket com registro de timestamps.** Mais preciso. Descartado porque
 exigiria guardar e podar uma lista por chave, transformando uma escrita atômica
@@ -65,9 +80,14 @@ continua ativa nesse cenário.
 **Positivas.** Cotas independentes por rota e por identidade. Contador atômico
 sem corrida. Uma falha do contador degrada a proteção, não o serviço.
 
-**Negativas.** Uma escrita no DynamoDB por requisição tem custo real e adiciona
-alguns milissegundos de latência. A janela deslizante é uma aproximação
-ponderada de duas janelas fixas, não um cálculo exato.
+**Negativas.** Uma escrita e uma leitura no DynamoDB por requisição têm custo
+real e somam alguns milissegundos de latência.
+
+A janela deslizante é uma aproximação: ela supõe o tráfego da janela anterior
+distribuído por igual, o que superestima quando a rajada foi no começo daquela
+janela e subestima quando foi no fim. O erro é pequeno e o benefício é grande —
+dois números por chave em vez de uma lista de instantes que cresce com o
+tráfego e precisa ser podada.
 
 **Gatilho para revisar.** Se o volume tornar o custo por requisição relevante,
 migrar a porta `RateLimiterStore` para Redis. A interface não muda.

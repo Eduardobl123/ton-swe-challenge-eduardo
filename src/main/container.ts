@@ -1,6 +1,8 @@
+import { RateLimiter, buildRateLimitPolicies } from '../application/rate-limit';
 import { AuthenticateUser, ListProducts } from '../application/use-cases';
 import { LockoutPolicy } from '../domain/value-objects';
 import type { Logger } from '../domain/ports';
+import type { RateLimitPolicies } from '../application/rate-limit';
 import {
   Argon2PasswordHasher,
   INERT_PASSWORD_HASH,
@@ -8,6 +10,7 @@ import {
 } from '../infrastructure/security';
 import { CursorCodec } from '../infrastructure/persistence/cursor-codec';
 import { InMemoryProductRepository } from '../infrastructure/persistence/in-memory/in-memory-product-repository';
+import { InMemoryRateLimiterStore } from '../infrastructure/persistence/in-memory/in-memory-rate-limiter-store';
 import { InMemoryUserRepository } from '../infrastructure/persistence/in-memory/in-memory-user-repository';
 import { SystemClock } from '../infrastructure/system/system-clock';
 import type { AppConfig } from '../infrastructure/config/env';
@@ -31,7 +34,6 @@ import type { AppConfig } from '../infrastructure/config/env';
  * | Issue | O que passa a ser montado aqui                                   |
  * | ----- | ---------------------------------------------------------------- |
  * | #4    | `RefreshTokenRepository` e os casos de uso de sessão              |
- * | #6    | `RateLimiterStore` e a política de limites                        |
  * | #7    | Cliente DynamoDB no lugar dos repositórios em memória             |
  * | #9    | `Logger` de verdade (pino) e o cliente do Sentry                  |
  */
@@ -39,11 +41,22 @@ export interface Container {
   readonly config: AppConfig;
   readonly policies: Policies;
   readonly useCases: UseCases;
+  readonly services: Services;
 }
 
 export interface UseCases {
   readonly authenticateUser: AuthenticateUser;
   readonly listProducts: ListProducts;
+}
+
+/**
+ * Serviços que a borda HTTP usa antes de chegar a um caso de uso (issue #8).
+ *
+ * O limitador não é caso de uso: ele não realiza intenção de negócio nenhuma,
+ * apenas decide se a requisição segue adiante.
+ */
+export interface Services {
+  readonly rateLimiter: RateLimiter;
 }
 
 /**
@@ -56,6 +69,7 @@ export interface UseCases {
  */
 export interface Policies {
   readonly lockout: LockoutPolicy;
+  readonly rateLimit: RateLimitPolicies;
 }
 
 /**
@@ -92,10 +106,17 @@ export function buildContainer(config: AppConfig, logger: Logger): Container {
   // a implementação não altera nenhum caso de uso.
   const users = new InMemoryUserRepository();
   const products = new InMemoryProductRepository(new CursorCodec(config.auth.jwtSecret));
+  const rateLimiterStore = new InMemoryRateLimiterStore();
+
+  const rateLimit = buildRateLimitPolicies({
+    loginPerMinute: config.rateLimit.loginPerMinute,
+    refreshPerMinute: config.rateLimit.refreshPerMinute,
+    productsPerMinute: config.rateLimit.productsPerMinute,
+  });
 
   return {
     config,
-    policies: { lockout },
+    policies: { lockout, rateLimit },
     useCases: {
       authenticateUser: new AuthenticateUser({
         users,
@@ -108,6 +129,14 @@ export function buildContainer(config: AppConfig, logger: Logger): Container {
         inertPasswordHash: INERT_PASSWORD_HASH,
       }),
       listProducts: new ListProducts({ products }),
+    },
+    services: {
+      rateLimiter: new RateLimiter({
+        store: rateLimiterStore,
+        clock,
+        logger,
+        failOpen: config.rateLimit.failOpen,
+      }),
     },
   };
 }
