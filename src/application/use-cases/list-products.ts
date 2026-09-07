@@ -47,7 +47,15 @@ export class ListProducts {
 
   public async execute(input: ListProductsInput): Promise<ListProductsOutput> {
     const { limit, clamped } = resolveLimit(input.limit);
-    const cursor = input.cursor === undefined ? undefined : PageCursor.create(input.cursor);
+    // Parâmetro presente e vazio equivale a ausente. Um cliente que monte a URL
+    // como `?cursor=${next ?? ''}` manda vazio na primeira página, e recusá-lo
+    // devolveria erro justamente na primeira requisição. É a mesma regra que o
+    // leitor de ambiente já aplica.
+    const requestedCursor = input.cursor?.trim();
+    const cursor =
+      requestedCursor === undefined || requestedCursor.length === 0
+        ? undefined
+        : PageCursor.create(requestedCursor);
 
     const page = await this.deps.products.listActive({ limit, cursor });
 

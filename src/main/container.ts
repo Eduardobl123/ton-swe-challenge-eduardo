@@ -6,6 +6,7 @@ import {
   INERT_PASSWORD_HASH,
   JoseTokenSigner,
 } from '../infrastructure/security';
+import { CursorCodec } from '../infrastructure/persistence/cursor-codec';
 import { InMemoryProductRepository } from '../infrastructure/persistence/in-memory/in-memory-product-repository';
 import { InMemoryUserRepository } from '../infrastructure/persistence/in-memory/in-memory-user-repository';
 import { SystemClock } from '../infrastructure/system/system-clock';
@@ -90,7 +91,7 @@ export function buildContainer(config: AppConfig, logger: Logger): Container {
   // respeita o mesmo contrato, incluindo a concorrência otimista, então trocar
   // a implementação não altera nenhum caso de uso.
   const users = new InMemoryUserRepository();
-  const products = new InMemoryProductRepository();
+  const products = new InMemoryProductRepository(new CursorCodec(config.auth.jwtSecret));
 
   return {
     config,

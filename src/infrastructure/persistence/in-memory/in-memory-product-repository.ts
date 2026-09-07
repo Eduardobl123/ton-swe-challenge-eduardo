@@ -1,5 +1,6 @@
 import { InvalidCursorError } from '../../../domain/errors';
 import { PageCursor } from '../../../domain/value-objects';
+import type { CursorCodec } from '../cursor-codec';
 import type { Product } from '../../../domain/entities';
 import type {
   ListActiveProductsQuery,
@@ -43,24 +44,6 @@ function compareKeys(a: string, b: string): number {
 /** Aceita apenas o que este repositório mesmo emitiu. */
 const SORT_KEY_SHAPE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z#.+$/;
 
-function encodeCursor(product: Product): PageCursor {
-  return PageCursor.create(Buffer.from(sortKey(product), 'utf8').toString('base64url'));
-}
-
-/**
- * @throws {InvalidCursorError} para qualquer coisa que não seja um cursor
- *   emitido aqui — texto aleatório, base64 de outro conteúdo ou cursor forjado.
- */
-function decodeCursor(cursor: PageCursor): string {
-  const decoded = Buffer.from(cursor.value, 'base64url').toString('utf8');
-
-  if (!SORT_KEY_SHAPE.test(decoded)) {
-    throw new InvalidCursorError();
-  }
-
-  return decoded;
-}
-
 /**
  * Catálogo em memória com paginação por cursor de verdade.
  *
@@ -76,10 +59,32 @@ function decodeCursor(cursor: PageCursor): string {
 export class InMemoryProductRepository implements ProductRepository {
   private readonly byId = new Map<string, Product>();
 
-  constructor(seed: readonly Product[] = []) {
+  constructor(
+    private readonly cursors: CursorCodec,
+    seed: readonly Product[] = [],
+  ) {
     for (const product of seed) {
       this.byId.set(product.id, product);
     }
+  }
+
+  private encodeCursor(product: Product): PageCursor {
+    return PageCursor.create(this.cursors.encode(sortKey(product)));
+  }
+
+  /**
+   * @throws {InvalidCursorError} para qualquer coisa que não seja um cursor
+   *   emitido aqui: o codificador recusa o que foi adulterado ou cifrado com
+   *   outro segredo, e a forma da chave recusa o resto.
+   */
+  private decodeCursor(cursor: PageCursor): string {
+    const decoded = this.cursors.decode(cursor.value);
+
+    if (!SORT_KEY_SHAPE.test(decoded)) {
+      throw new InvalidCursorError();
+    }
+
+    return decoded;
   }
 
   public add(product: Product): void {
@@ -92,7 +97,7 @@ export class InMemoryProductRepository implements ProductRepository {
       .filter((product) => product.active)
       .sort((a, b) => compareKeys(sortKey(b), sortKey(a)));
 
-    const after = cursor === undefined ? undefined : decodeCursor(cursor);
+    const after = cursor === undefined ? undefined : this.decodeCursor(cursor);
     const remaining =
       after === undefined ? ordered : ordered.filter((product) => sortKey(product) < after);
 
@@ -105,7 +110,7 @@ export class InMemoryProductRepository implements ProductRepository {
 
     return Promise.resolve({
       items,
-      nextCursor: hasMore && last !== undefined ? encodeCursor(last) : undefined,
+      nextCursor: hasMore && last !== undefined ? this.encodeCursor(last) : undefined,
     });
   }
 }

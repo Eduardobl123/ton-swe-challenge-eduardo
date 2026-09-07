@@ -1,14 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { ListProducts } from '../../../../src/application/use-cases';
 import { InvalidCursorError, ValidationError } from '../../../../src/domain/errors';
-import { InMemoryProductRepository } from '../../../../src/infrastructure/persistence/in-memory/in-memory-product-repository';
 import { Product } from '../../../../src/domain/entities';
 import { Money } from '../../../../src/domain/value-objects';
-import { catalogo, produto } from '../../../support/product-factory';
+import {
+  catalogo,
+  codificadorDeCursor,
+  produto,
+  repositorio,
+} from '../../../support/product-factory';
 import type { ListProductsOutput } from '../../../../src/application/dto';
 
-const montar = (quantidade = 0): { useCase: ListProducts; products: InMemoryProductRepository } => {
-  const products = new InMemoryProductRepository(catalogo(quantidade));
+const montar = (
+  quantidade = 0,
+): { useCase: ListProducts; products: ReturnType<typeof repositorio> } => {
+  const products = repositorio(catalogo(quantidade));
 
   return { useCase: new ListProducts({ products }), products };
 };
@@ -92,11 +98,7 @@ describe('ListProducts', () => {
     });
 
     it('omite produtos inativos', async () => {
-      const products = new InMemoryProductRepository([
-        produto(1),
-        produto(2, { active: false }),
-        produto(3),
-      ]);
+      const products = repositorio([produto(1), produto(2, { active: false }), produto(3)]);
 
       const saida = await new ListProducts({ products }).execute({
         limit: undefined,
@@ -182,7 +184,7 @@ describe('ListProducts', () => {
       // maiúsculas contra minúsculas, e a janela passaria a pular ou repetir
       // item. Ids minúsculos escondem o problema.
       const criadoEm = new Date('2026-01-01T00:00:00.000Z');
-      const products = new InMemoryProductRepository(
+      const products = repositorio(
         ['Alpha', 'alpha', 'BETA', 'beta', 'Gama', 'gama'].map((id, i) =>
           Product.create({
             id,
@@ -209,13 +211,42 @@ describe('ListProducts', () => {
       expect(new Set(vistos).size).toBe(6);
     });
 
-    it('o cursor é opaco: não revela o formato interno da chave', async () => {
+    it('não devolve página vazia quando o total é múltiplo exato do tamanho', async () => {
+      // Erro de um a mais clássico em paginação: ler o item extra sem cuidado
+      // produziria uma quarta página vazia com cursor.
+      const { useCase } = montar(12);
+      const tamanhos: number[] = [];
+      let cursor: string | undefined;
+
+      do {
+        const pagina = await listar(useCase, 4, cursor);
+        tamanhos.push(pagina.data.length);
+        cursor = pagina.page.nextCursor;
+      } while (cursor !== undefined);
+
+      expect(tamanhos).toEqual([4, 4, 4]);
+    });
+
+    it('o conteúdo do cursor não é legível', async () => {
+      // Verificar que a string não contém `prod-` não provaria nada: base64
+      // decodifica em uma linha. O que sustenta a opacidade é a cifra.
       const { useCase } = montar(5);
 
-      const cursor = (await listar(useCase, 2)).page.nextCursor;
+      const cursor = (await listar(useCase, 2)).page.nextCursor!;
 
-      expect(cursor).not.toContain('prod-');
-      expect(cursor).not.toContain('2026-');
+      expect(Buffer.from(cursor, 'base64url').toString('utf8')).not.toContain('prod-');
+      expect(Buffer.from(cursor, 'base64url').toString('utf8')).not.toContain('2026-');
+    });
+
+    it('o mesmo ponto produz cursores diferentes a cada emissão', async () => {
+      // Vetor de inicialização aleatório: impede correlacionar duas respostas
+      // pelo cursor.
+      const { useCase } = montar(5);
+
+      const [a, b] = await Promise.all([listar(useCase, 2), listar(useCase, 2)]);
+
+      expect(a.page.nextCursor).not.toBe(b.page.nextCursor);
+      expect(a.data.map((p) => p.id)).toEqual(b.data.map((p) => p.id));
     });
   });
 
@@ -268,18 +299,61 @@ describe('ListProducts', () => {
     it.each([
       ['texto qualquer', 'nao-e-um-cursor'],
       ['base64 de outro conteúdo', Buffer.from('conteudo-forjado').toString('base64url')],
-      ['chave com data malformada', Buffer.from('ontem#prod-1').toString('base64url')],
-      ['chave sem identificador', Buffer.from('2026-01-01T00:00:00.000Z#').toString('base64url')],
+      [
+        'chave de ordenação em claro, como se a cifra não existisse',
+        Buffer.from('2026-01-01T00:09:00.000Z#prod-009').toString('base64url'),
+      ],
     ])('recusa %s', async (_caso, cursor) => {
       const { useCase } = montar(10);
 
       await expect(listar(useCase, 10, cursor)).rejects.toBeInstanceOf(InvalidCursorError);
     });
 
-    it('recusa cursor vazio', async () => {
+    it('recusa cursor adulterado', async () => {
+      const { useCase } = montar(10);
+      const original = (await listar(useCase, 3)).page.nextCursor!;
+      const bytes = Buffer.from(original, 'base64url');
+      bytes.writeUInt8(bytes.readUInt8(bytes.length - 1) ^ 0xff, bytes.length - 1);
+
+      await expect(listar(useCase, 3, bytes.toString('base64url'))).rejects.toBeInstanceOf(
+        InvalidCursorError,
+      );
+    });
+
+    it('recusa cursor legítimo cujo conteúdo não é uma chave de ordenação', async () => {
+      // Acontece numa implantação gradual: uma versão anterior emitiu cursor com
+      // outro formato interno, cifrado com o mesmo segredo. A cifra confere, mas
+      // o conteúdo não serve, e continuar com ele produziria página errada em
+      // silêncio.
+      const cursorAntigo = codificadorDeCursor().encode('formato-antigo:42');
       const { useCase } = montar(10);
 
-      await expect(listar(useCase, 10, '   ')).rejects.toBeInstanceOf(InvalidCursorError);
+      await expect(listar(useCase, 3, cursorAntigo)).rejects.toBeInstanceOf(InvalidCursorError);
+    });
+
+    it('recusa cursor emitido com outro segredo', async () => {
+      // Vale entre implantações e depois de uma rotação de segredo.
+      const emitente = new ListProducts({
+        products: repositorio(catalogo(10), 'outro-segredo-bem-diferente-com-32-chars'),
+      });
+      const cursorAlheio = (await emitente.execute({ limit: 3, cursor: undefined })).page
+        .nextCursor;
+      const { useCase } = montar(10);
+
+      await expect(listar(useCase, 3, cursorAlheio)).rejects.toBeInstanceOf(InvalidCursorError);
+    });
+
+    it.each([
+      ['vazio', ''],
+      ['só espaços', '   '],
+    ])('trata cursor %s como ausente, devolvendo a primeira página', async (_caso, cursor) => {
+      // Um cliente que monte a URL como `?cursor=${next ?? ''}` manda vazio na
+      // primeira página; recusar devolveria erro logo na primeira requisição.
+      const { useCase } = montar(10);
+
+      const saida = await listar(useCase, 3, cursor);
+
+      expect(saida.data.map((p) => p.id)).toEqual(['prod-010', 'prod-009', 'prod-008']);
     });
 
     it('não explica por que o cursor é inválido', async () => {
