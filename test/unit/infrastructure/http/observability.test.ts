@@ -137,7 +137,7 @@ describe('observabilidade da borda HTTP', () => {
       expect(ctx.metrics.names()).not.toContain('LoginFailure');
     });
 
-    it('conta login recusado', async () => {
+    it('conta login recusado por credencial', async () => {
       await ctx.app.inject({
         method: 'POST',
         url: '/v1/auth/login',
@@ -146,6 +146,35 @@ describe('observabilidade da borda HTTP', () => {
 
       expect(ctx.metrics.names()).toContain('LoginFailure');
       expect(ctx.metrics.names()).not.toContain('LoginSuccess');
+    });
+
+    it('não conta corpo malformado como tentativa de credencial', async () => {
+      // Um cliente com bug de serialização elevaria o indicador de ataque.
+      await ctx.app.inject({
+        method: 'POST',
+        url: '/v1/auth/login',
+        payload: { email: 'nao-e-email', password: 'curta' },
+      });
+
+      expect(ctx.metrics.names()).not.toContain('LoginFailure');
+      expect(ctx.metrics.names()).not.toContain('LoginSuccess');
+    });
+
+    it('não conta requisição barrada pela cota como falha de login', async () => {
+      // Ela já aparece em RateLimited; somar as duas faria uma rajada ser
+      // contada duas vezes.
+      const { app, metrics } = await buildTestApp({ RATE_LIMIT_LOGIN_PER_MINUTE: '1' });
+
+      await login(app);
+      await app.inject({
+        method: 'POST',
+        url: '/v1/auth/login',
+        payload: { email: 'demo@ton.com.br', password: 'Desafio@Ton2026' },
+      });
+
+      expect(metrics.records.filter((r) => r.name === 'LoginFailure')).toHaveLength(0);
+      expect(metrics.names()).toContain('RateLimited');
+      await app.close();
     });
 
     it('conta requisição barrada pela cota', async () => {

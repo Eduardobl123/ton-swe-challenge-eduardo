@@ -329,10 +329,12 @@ O nome do evento vem primeiro e é estável: `auth.login.failed` é agregável e
 alertável, enquanto uma frase muda quando alguém a reescreve e leva o alarme
 junto.
 
-Senha, hash, token e cabeçalho de autorização são removidos por configuração.
-Antes disso, porém, o próprio tipo dos campos de log aceita apenas valores
-primitivos: passar uma entidade ou um `PasswordHash` para o log **não compila**.
-O vazamento acidental deixa de depender da atenção de quem escreve a chamada.
+Senha, hash, token e cabeçalho de autorização são removidos por configuração,
+no campo direto e em um nível de aninhamento. Antes disso, porém, o próprio tipo
+dos campos de log aceita apenas valores primitivos: passar uma entidade ou um
+`PasswordHash` para o log **não compila**. O vazamento acidental deixa de
+depender da atenção de quem escreve a chamada, e a remoção fica como segunda
+linha para o que bibliotecas anexam por conta própria.
 
 ### Métricas
 

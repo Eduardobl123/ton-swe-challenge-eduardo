@@ -19,8 +19,14 @@ export interface PinoLoggerOptions {
  * acrescenta — cabeçalhos de requisição, principalmente — e o que uma
  * biblioteca futura possa anexar sem passar pela porta.
  *
- * A lista é redundante de propósito. Redaction é barata e o custo de descobrir
+ * A lista é redundante de propósito. Remover é barato, e o custo de descobrir
  * que faltava um caminho é um segredo publicado em log retido por anos.
+ *
+ * **Alcance:** o campo direto e um nível de aninhamento. Mais fundo que isso
+ * exigiria varrer todo objeto de log a cada linha, o que custa processamento no
+ * caminho quente para cobrir um caso que a tipagem já impede do nosso lado. Se
+ * alguma biblioteca passar a anexar estrutura mais profunda, o caminho dela
+ * entra nesta lista.
  */
 const REDACTED_PATHS = [
   'req.headers.authorization',

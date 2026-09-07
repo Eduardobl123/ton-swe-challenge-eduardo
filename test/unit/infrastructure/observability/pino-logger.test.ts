@@ -111,7 +111,10 @@ describe('PinoLogger', () => {
       expect(cru()).toContain('[REDACTED]');
     });
 
-    it('remove também em campo aninhado', () => {
+    it('remove também um nível de aninhamento', () => {
+      // O alcance é o campo direto e um nível. Mais fundo exigiria varrer todo
+      // objeto de log a cada linha, o que custa processamento no caminho quente
+      // para cobrir um caso que a tipagem já impede do nosso lado.
       const { logger, cru } = capturar('trace');
       const comObjeto = logger as unknown as {
         info(evento: string, campos: Record<string, unknown>): void;

@@ -19,6 +19,12 @@ export interface ObservabilityOptions {
  * log quanto na métrica — e uma dimensão com cardinalidade infinita no
  * CloudWatch é uma série temporal por requisição.
  */
+/** Apenas os status que representam desfecho de uma tentativa de autenticação. */
+const LOGIN_OUTCOME: Readonly<Record<number, string | undefined>> = {
+  200: 'LoginSuccess',
+  401: 'LoginFailure',
+};
+
 const plugin: FastifyPluginCallback<ObservabilityOptions> = (app, { logger, metrics }, done) => {
   app.addHook('onRequest', (request, _reply, next) => {
     request.startedAt = process.hrtime.bigint();
@@ -51,11 +57,19 @@ const plugin: FastifyPluginCallback<ObservabilityOptions> = (app, { logger, metr
     }
 
     // O resultado do login é derivado do status, e não de um contador dentro do
-    // caso de uso. Ele já é exato para o que estas métricas medem, e evita
-    // atravessar a porta de métricas por todas as camadas para contar duas
-    // coisas.
+    // caso de uso: o status já distingue os casos, e isso evita atravessar a
+    // porta de métricas por todas as camadas para contar duas coisas.
+    //
+    // Só 200 e 401 entram. Corpo malformado não é tentativa de credencial, e
+    // requisição barrada pela cota já é contada em `RateLimited` — somar as
+    // duas faria um cliente com bug de serialização elevar o indicador de
+    // ataque, e uma rajada aparecer duas vezes.
     if (route === '/v1/auth/login') {
-      metrics.record(statusCode === 200 ? 'LoginSuccess' : 'LoginFailure', 1, 'Count');
+      const resultado = LOGIN_OUTCOME[statusCode];
+
+      if (resultado !== undefined) {
+        metrics.record(resultado, 1, 'Count');
+      }
     }
 
     next();
