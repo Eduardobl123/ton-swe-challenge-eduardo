@@ -262,7 +262,13 @@ Cada push e cada pull request rodam sete verificações em paralelo:
 | Infraestrutura        | Terraform malformado ou inválido                                            |
 
 A verificação de infraestrutura se declara ausente enquanto não houver arquivos
-`.tf`, e passa a validar sozinha quando a issue #10 os criar.
+`.tf`, e passa a validar sozinha quando a issue #10 os criar — cada módulo por
+vez, porque `infra/` guarda apenas subdiretórios.
+
+A auditoria de dependências relata em vez de bloquear. Um aviso publicado sobre
+dependência transitiva reprovaria o próximo pull request seja ele qual for, o
+autor não teria o que corrigir, e a lição aprendida seria ignorar a esteira
+vermelha.
 
 O deploy é manual, por `workflow_dispatch`, e usa federação por OIDC em vez de
 chave de acesso guardada como segredo: chave estática vaza, não expira e

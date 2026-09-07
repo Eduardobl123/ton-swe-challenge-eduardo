@@ -5,11 +5,14 @@ on:
     branches: [main]
   pull_request:
 
-# Uma execução por referência. Empurrar duas vezes seguidas cancela a primeira,
-# porque o resultado dela já não interessa a ninguém.
+# Uma execução por referência. Em pull request, empurrar de novo cancela a
+# anterior, porque o resultado dela já não interessa a ninguém.
+#
+# Em `main` o cancelamento fica desligado: dois merges seguidos deixariam o
+# primeiro commit sem veredito, justamente no ramo cuja proteção exige verde.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
@@ -115,6 +118,11 @@ jobs:
   dependencias:
     name: Vulnerabilidades conhecidas
     runs-on: ubuntu-latest
+    # Relata sem bloquear. Um aviso publicado sobre dependência transitiva
+    # reprovaria o próximo pull request seja ele qual for, o autor não teria o
+    # que corrigir, e a lição aprendida seria ignorar a esteira vermelha. O
+    # resultado aparece no resumo da execução e no agendamento diário abaixo.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -123,32 +131,61 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Falhas de severidade alta ou crítica
-        run: npm audit --audit-level=high
+        run: |
+          if npm audit --audit-level=high; then
+            echo 'Nenhuma vulnerabilidade de severidade alta ou crítica.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo '## Dependências com vulnerabilidade conhecida'
+              echo
+              echo 'Não bloqueia este pull request. Corrija em uma mudança própria.'
+              echo
+              echo '```'
+              npm audit --audit-level=high || true
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   terraform:
     name: Infraestrutura
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Há definição de infraestrutura?
-        id: existe
-        # A infraestrutura chega na issue #10. Até lá o passo se declara
-        # ausente em vez de falhar, e passa a validar sozinho quando os
-        # arquivos aparecerem.
+      - name: Descobre os módulos
+        id: modulos
+        # `find` em vez de glob com `**`: a expansão recursiva do bash depende
+        # da opção `globstar`, que vem desligada nestes passos. Com ela
+        # desligada o padrão não casa nada, e a validação se desligaria sozinha
+        # sem ninguém perceber — portão em verde que não verifica nada é pior
+        # que portão nenhum.
         run: |
-          if compgen -G "infra/**/*.tf" > /dev/null; then
-            echo "encontrado=true" >> "$GITHUB_OUTPUT"
-          else
+          MODULOS=$(find infra -name '*.tf' -exec dirname {} \; 2>/dev/null | sort -u)
+
+          if [ -z "$MODULOS" ]; then
             echo "encontrado=false" >> "$GITHUB_OUTPUT"
-            echo "Nenhum arquivo .tf ainda; validação entra com a issue #10." >> "$GITHUB_STEP_SUMMARY"
+            echo 'Nenhum arquivo .tf ainda; validação entra com a issue #10.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "encontrado=true" >> "$GITHUB_OUTPUT"
+            echo "modulos<<EOF" >> "$GITHUB_OUTPUT"
+            echo "$MODULOS" >> "$GITHUB_OUTPUT"
+            echo "EOF" >> "$GITHUB_OUTPUT"
           fi
+
       - uses: hashicorp/setup-terraform@v3
-        if: steps.existe.outputs.encontrado == 'true'
+        if: steps.modulos.outputs.encontrado == 'true'
+
       - name: Formato
-        if: steps.existe.outputs.encontrado == 'true'
-        run: terraform -chdir=infra fmt -check -recursive
-      - name: Validação
-        if: steps.existe.outputs.encontrado == 'true'
+        if: steps.modulos.outputs.encontrado == 'true'
+        run: terraform fmt -check -recursive infra
+
+      - name: Validação de cada módulo
+        if: steps.modulos.outputs.encontrado == 'true'
+        # Um por vez, porque `infra/` guarda apenas subdiretórios: não há módulo
+        # raiz ali para inicializar.
         run: |
-          terraform -chdir=infra init -backend=false
-          terraform -chdir=infra validate
+          echo "${{ steps.modulos.outputs.modulos }}" | while read -r DIR; do
+            [ -z "$DIR" ] && continue
+            echo "--- $DIR"
+            terraform -chdir="$DIR" init -backend=false -input=false
+            terraform -chdir="$DIR" validate
+          done
