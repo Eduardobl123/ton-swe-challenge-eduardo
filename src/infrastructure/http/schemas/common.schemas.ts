@@ -13,7 +13,14 @@ export const problemDetailsSchema = z
     type: z.string(),
     title: z.string(),
     status: z.number().int(),
-    code: z.enum(ERROR_CODES),
+    code: z
+      .enum(ERROR_CODES)
+      .describe(
+        'Código estável do erro — é ele, e não a mensagem, que o cliente usa para decidir. ' +
+          'Nem todo valor da lista chega ao cliente: alguns são convertidos antes de sair, ' +
+          'de propósito, para não confirmar existência de conta nem sinalizar detecção. ' +
+          'A tabela de quais saem e quais não saem está em docs/errors.md.',
+      ),
     instance: z.string(),
     requestId: z.string(),
     errors: z

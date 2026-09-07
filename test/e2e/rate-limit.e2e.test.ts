@@ -42,12 +42,30 @@ describe('cota por usuário', () => {
     const tokenA = await autenticar(USUARIO_A);
     const cabecalhos = { authorization: `Bearer ${tokenA}` };
 
+    let anterior = LIMITE;
+
     for (let i = 1; i <= LIMITE; i += 1) {
       const resposta = await env.chamar('GET', '/v1/products', { headers: cabecalhos });
 
       expect(resposta.statusCode, `requisição ${String(i)} deveria passar`).toBe(200);
       expect(Number(resposta.headers['ratelimit-limit'])).toBe(LIMITE);
-      expect(Number(resposta.headers['ratelimit-remaining'])).toBe(LIMITE - i);
+
+      const restante = Number(resposta.headers['ratelimit-remaining']);
+
+      if (i === 1) {
+        // A primeira requisição da janela não sofre ponderação: aqui o número é
+        // exato, e é o que prova que a cota realmente conta.
+        expect(restante).toBe(LIMITE - 1);
+      }
+
+      // O saldo nunca sobe e nunca fica abaixo do que o consumo bruto permitiria.
+      // A igualdade exata não serve: a janela desliza sobre duas janelas fixas,
+      // e uma virada no meio do laço faz o peso da anterior decair, deixando a
+      // estimativa legitimamente **abaixo** da contagem acumulada. Exigir o valor
+      // cravado transformaria o horário de execução em causa de falha.
+      expect(restante).toBeLessThanOrEqual(anterior);
+      expect(restante).toBeGreaterThanOrEqual(LIMITE - i);
+      anterior = restante;
     }
 
     const excedida = await env.chamar('GET', '/v1/products', { headers: cabecalhos });

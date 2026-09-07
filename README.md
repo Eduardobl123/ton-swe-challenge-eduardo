@@ -236,7 +236,7 @@ primeira requisição. A referência completa e comentada está em
 npm test                   # 530 unitários — rápidos, sem Docker
 npm run test:integration   # 48 contra o DynamoDB Local
 npm run test:e2e           # 26 jornadas sobre o sistema montado
-npm run test:coverage:all  # as três suítes, com o gate consolidado
+npm run test:coverage:all  # as três suítes com o gate consolidado (pede docker compose up)
 npm run verify:lambda      # o artefato publicado, no runtime oficial da AWS
 ```
 
