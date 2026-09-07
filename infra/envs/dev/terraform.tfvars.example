@@ -1,0 +1,15 @@
+# Copie para terraform.tfvars e ajuste. O arquivo real está no .gitignore.
+#
+# O segredo não precisa estar aqui: prefira a variável de ambiente
+#   export TF_VAR_jwt_secret=$(openssl rand -base64 48)
+# que evita o valor em disco.
+
+environment  = "dev"
+region       = "us-east-1"
+app_version  = "local"
+cors_origins = ["*"]
+
+# Rajada e taxa da primeira camada do limite (ADR 0005). Suba conforme o
+# tráfego real; estes valores protegem sem atrapalhar avaliação.
+throttle_burst = 100
+throttle_rate  = 50

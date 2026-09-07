@@ -27,7 +27,7 @@ riscos. Esta tabela é a fonte de verdade sobre o que já roda.
 | [7](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/7)   | Persistência DynamoDB e ambiente local       | ✅ pronto   |
 | [8](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/8)   | Adaptador HTTP Fastify e OpenAPI             | ✅ pronto   |
 | [9](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/9)   | Observabilidade: logs, request-id e Sentry   | ✅ pronto   |
-| [10](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/10) | Infraestrutura AWS com Terraform             | ⏳ pendente |
+| [10](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/10) | Infraestrutura AWS com Terraform             | ✅ pronto   |
 | [11](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/11) | CI/CD e gate de cobertura                    | ✅ pronto   |
 | [12](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/12) | Documentação, ADRs e diagramas               | 🔄 em curso |
 | [13](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/13) | Testes ponta a ponta e contrato              | ⏳ pendente |
@@ -367,10 +367,21 @@ desenvolvimento e CI limpos.
 
 ## Deploy na AWS
 
-API Gateway HTTP API à frente de uma função Lambda em arm64, com DynamoDB como
-banco e segredos no SSM Parameter Store. Tudo provisionado por Terraform, com
-IAM de menor privilégio. Passo a passo em [`infra/README.md`](infra/) a partir
-da issue #10.
+API Gateway HTTP à frente de uma função Lambda em arm64, com DynamoDB como banco
+e segredos no Parameter Store. Tudo por Terraform, com permissões de menor
+privilégio: nenhuma declaração usa `*` em recurso ou em ação.
+
+```bash
+npm run package:lambda
+cd infra/envs/dev && export TF_VAR_jwt_secret=$(openssl rand -base64 48)
+terraform init && terraform apply
+```
+
+Passo a passo, verificação por `curl` e limpeza em [`infra/README.md`](infra/README.md).
+
+O segredo é lido do Parameter Store **uma vez por instância**, no carregamento
+do módulo, e não a cada requisição — buscar por chamada colocaria a latência do
+SSM dentro do p99 de toda resposta.
 
 ---
 

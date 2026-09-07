@@ -15,13 +15,20 @@ coverage/
 !.env.example
 
 # terraform
+#
+# O arquivo de trava (.terraform.lock.hcl) é versionado de propósito: ele fixa a
+# versão e o resumo do provedor, e sem ele cada máquina resolve uma versão
+# diferente. Um plano que só falha na máquina de alguém é o pior tipo de
+# divergência.
 .terraform/
 *.tfstate
 *.tfstate.*
 *.tfvars
 !*.tfvars.example
 crash.log
-.terraform.lock.hcl
+
+# artefato do Lambda, produzido por npm run package:lambda
+dist/
 
 SWE_Challenge-Back-TREM.pdf
 

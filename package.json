@@ -27,16 +27,20 @@
     "openapi:export": "tsx scripts/export-openapi.ts",
     "db:create": "tsx scripts/create-table.ts",
     "db:seed": "tsx scripts/seed.ts",
-    "lint:no-scan": "! grep -rn 'ScanCommand' src/ || (echo 'Varredura no código de produção: use Query com índice.' && exit 1)"
+    "lint:no-scan": "! grep -rn 'ScanCommand' src/ || (echo 'Varredura no código de produção: use Query com índice.' && exit 1)",
+    "package:lambda": "tsx scripts/package-lambda.ts"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.1127.0",
+    "@aws-sdk/client-ssm": "^3.1127.0",
     "@aws-sdk/lib-dynamodb": "^3.1127.0",
+    "@fastify/aws-lambda": "^6.4.1",
     "@fastify/cors": "^11.3.0",
     "@fastify/helmet": "^13.1.1",
     "@fastify/swagger": "^9.8.1",
     "@fastify/swagger-ui": "^6.1.1",
     "@node-rs/argon2": "^2.2.0",
+    "@sentry/aws-serverless": "^10.73.0",
     "@sentry/node": "^10.73.0",
     "fastify": "^5.12.3",
     "fastify-type-provider-zod": "^7.0.0",
@@ -46,6 +50,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@types/aws-lambda": "^8.10.163",
     "@types/node": "^24.13.3",
     "@vitest/coverage-v8": "^5.0.0",
     "eslint": "^10.10.0",
