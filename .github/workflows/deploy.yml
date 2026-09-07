@@ -1,0 +1,63 @@
+name: Deploy
+
+# Disparo manual, nunca automático.
+#
+# Publicar a cada merge exigiria confiar que a suíte cobre tudo que quebra em
+# produção. Ela não cobre — nada cobre — e o custo de um deploy indevido aqui é
+# uma tabela em conta real. Quem aperta o botão assume a decisão.
+on:
+  workflow_dispatch:
+    inputs:
+      ambiente:
+        description: Ambiente de destino
+        type: choice
+        options: [dev]
+        default: dev
+
+concurrency:
+  group: deploy-${{ inputs.ambiente }}
+  cancel-in-progress: false
+
+permissions:
+  # Necessária para trocar o token do GitHub por credenciais temporárias da AWS.
+  id-token: write
+  contents: read
+
+jobs:
+  publicar:
+    name: Provisiona e publica
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.ambiente }}
+    # Sem a role configurada, o fluxo se declara indisponível em vez de falhar
+    # no meio. Quem clona o repositório não tem a conta AWS de ninguém.
+    if: vars.AWS_DEPLOY_ROLE_ARN != ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+
+      - name: Credenciais temporárias
+        # Federação por OIDC: nenhuma chave de acesso guardada como segredo.
+        # Chave estática vaza, não expira e ninguém percebe quando é usada.
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+      - name: Provisiona
+        run: |
+          terraform -chdir=infra/envs/${{ inputs.ambiente }} init
+          terraform -chdir=infra/envs/${{ inputs.ambiente }} apply -auto-approve
+
+      - name: Carga inicial
+        # Idempotente: repetir depois de uma falha no meio do caminho não
+        # duplica nem sobrescreve nada.
+        env:
+          TABLE_NAME: ${{ vars.TABLE_NAME }}
+          PERSISTENCE: dynamodb
+        run: npm run db:seed

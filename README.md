@@ -1,5 +1,7 @@
 # Ton SWE Challenge — API de autenticação e catálogo
 
+[![CI](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/actions/workflows/ci.yml/badge.svg)](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/actions/workflows/ci.yml)
+
 API REST que autentica usuários por JWT e expõe uma listagem de produtos
 protegida, paginada por cursor e com rate limit. Construída em arquitetura
 hexagonal sobre Node.js e TypeScript, persistida em DynamoDB e provisionada com
@@ -26,7 +28,7 @@ riscos. Esta tabela é a fonte de verdade sobre o que já roda.
 | [8](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/8)   | Adaptador HTTP Fastify e OpenAPI             | ✅ pronto   |
 | [9](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/9)   | Observabilidade: logs, request-id e Sentry   | ⏳ pendente |
 | [10](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/10) | Infraestrutura AWS com Terraform             | ⏳ pendente |
-| [11](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/11) | CI/CD e gate de cobertura                    | ⏳ pendente |
+| [11](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/11) | CI/CD e gate de cobertura                    | ✅ pronto   |
 | [12](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/12) | Documentação, ADRs e diagramas               | 🔄 em curso |
 | [13](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/13) | Testes ponta a ponta e contrato              | ⏳ pendente |
 
@@ -244,6 +246,36 @@ os testes de integração, e as jornadas de ponta a ponta cobrem a composição.
 Relatório HTML em `coverage/index.html` após `npm run test:coverage`.
 
 ---
+
+## Integração contínua
+
+Cada push e cada pull request rodam sete verificações em paralelo:
+
+| Verificação           | O que impede de entrar                                                      |
+| --------------------- | --------------------------------------------------------------------------- |
+| Tipos, lint e formato | Fronteira arquitetural violada, promessa não tratada, código fora de padrão |
+| Testes unitários      | Regressão no núcleo, com gate de 90% de cobertura em domínio e aplicação    |
+| Testes de integração  | Quebra nas garantias de concorrência, contra o DynamoDB de verdade          |
+| Contrato OpenAPI      | Rota alterada sem atualizar `docs/openapi.json`                             |
+| Build                 | Pacote que não compila, com o tamanho reportado a cada execução             |
+| Vulnerabilidades      | Dependência com falha de severidade alta ou crítica                         |
+| Infraestrutura        | Terraform malformado ou inválido                                            |
+
+A verificação de infraestrutura se declara ausente enquanto não houver arquivos
+`.tf`, e passa a validar sozinha quando a issue #10 os criar.
+
+O deploy é manual, por `workflow_dispatch`, e usa federação por OIDC em vez de
+chave de acesso guardada como segredo: chave estática vaza, não expira e
+ninguém percebe quando é usada. Sem a role configurada nas variáveis do
+repositório, o fluxo se declara indisponível em vez de falhar no meio.
+
+### Rodando o mesmo que o CI roda
+
+```bash
+npm run typecheck && npm run lint && npm run format:check
+npm run test:coverage
+docker compose up -d --wait && npm run test:integration
+```
 
 ## Qualidade de código
 

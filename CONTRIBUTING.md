@@ -43,9 +43,16 @@ completo, que é o mesmo que o CI executa:
 npm run typecheck
 npm run lint
 npm run format:check
-npm test
 npm run test:coverage
+npm run openapi:export && git diff --exit-code docs/openapi.json
+
+docker compose up -d --wait
+npm run test:integration
 ```
+
+O `main` deve exigir pull request com CI verde. A configuração fica em
+Settings → Branches → Branch protection rules, marcando "Require status checks
+to pass" com os sete trabalhos do fluxo de CI.
 
 ## O que a revisão vai cobrar
 

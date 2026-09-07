@@ -33,6 +33,14 @@ export default defineConfig({
        * testes de integração e e2e (issues #7 e #13).
        */
       thresholds: {
+        // O gate global é mais baixo que o do núcleo de propósito: adaptadores
+        // envolvem I/O e parte deles é provada pela suíte de integração, que
+        // roda separada. Exigir o mesmo dos dois empurraria alguém a escrever
+        // teste de fachada só para levantar o número.
+        lines: 80,
+        functions: 80,
+        branches: 80,
+        statements: 80,
         'src/domain/**/*.ts': { lines: 90, functions: 90, branches: 90, statements: 90 },
         'src/application/**/*.ts': { lines: 90, functions: 90, branches: 90, statements: 90 },
       },
