@@ -194,7 +194,23 @@ export class AuthenticateUser {
     // permitiria que tentativas simultâneas lessem o mesmo total e gravassem por
     // cima umas das outras — cem em paralelo contariam como uma, e o bloqueio
     // deixaria de valer contra ataque automatizado.
-    const updated = await this.deps.users.registerFailedLogin(user, now, this.deps.lockoutPolicy);
+    let updated;
+    try {
+      updated = await this.deps.users.registerFailedLogin(user, now, this.deps.lockoutPolicy);
+    } catch (error) {
+      if (!(error instanceof ConcurrencyError)) {
+        throw error;
+      }
+
+      // O registro sumiu entre a leitura e a contabilização. A resposta é a
+      // mesma de qualquer outra recusa: transformar um estado anômalo em erro
+      // interno diria a quem sonda que algo diferente aconteceu ali.
+      this.deps.logger.warn('auth.login.concurrent_update', {
+        userId: user.id,
+        ipAddress,
+      });
+      return;
+    }
 
     this.deps.logger.info('auth.login.failed', {
       reason: 'wrong_password',

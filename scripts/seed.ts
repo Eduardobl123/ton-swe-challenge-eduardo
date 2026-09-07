@@ -44,17 +44,25 @@ async function main(): Promise<void> {
 
   const now = clock.now();
 
-  await users.save(
-    User.create({
-      id: USER_ID,
-      email: Email.create(EMAIL),
-      passwordHash: await passwordHasher.hash(PASSWORD),
-      failedLoginAttempts: 0,
-      lockedUntil: undefined,
-      createdAt: now,
-      version: 0,
-    }),
-  );
+  // Só grava se ainda não existir. Regravar por cima falharia no controle de
+  // concorrência — a versão já teria avançado — e sobrescrever o contador de
+  // tentativas de um usuário real seria pior ainda.
+  if ((await users.findById(USER_ID)) === null) {
+    await users.save(
+      User.create({
+        id: USER_ID,
+        email: Email.create(EMAIL),
+        passwordHash: await passwordHasher.hash(PASSWORD),
+        failedLoginAttempts: 0,
+        lockedUntil: undefined,
+        createdAt: now,
+        version: 0,
+      }),
+    );
+    console.log(`Usuário ${EMAIL} criado.`);
+  } else {
+    console.log(`Usuário ${EMAIL} já existia; nada a fazer.`);
+  }
 
   for (let i = 1; i <= PRODUCT_COUNT; i += 1) {
     await products.add(
@@ -72,7 +80,7 @@ async function main(): Promise<void> {
     );
   }
 
-  console.log(`Pronto: 1 usuário (${EMAIL}) e ${String(PRODUCT_COUNT)} produtos.`);
+  console.log(`Pronto: ${String(PRODUCT_COUNT)} produtos no catálogo.`);
   console.log('A senha do usuário demo vem de SEED_USER_PASSWORD.');
 }
 

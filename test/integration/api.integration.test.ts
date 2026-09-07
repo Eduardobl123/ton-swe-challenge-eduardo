@@ -13,6 +13,7 @@ const SENHA = 'Desafio@Ton2026';
 
 let table: TestTable;
 let app: FastifyInstance;
+let seedingContainer: ReturnType<typeof buildContainer>;
 
 /**
  * A jornada completa contra o banco de verdade.
@@ -68,6 +69,7 @@ describe('API contra DynamoDB', () => {
     }
 
     app = await buildApp(container);
+    seedingContainer = container;
   });
 
   afterAll(async () => {
@@ -185,6 +187,33 @@ describe('API contra DynamoDB', () => {
 
     expect(saida.statusCode).toBe(204);
     expect(depois.statusCode).toBe(401);
+  });
+
+  it('a carga inicial pode ser repetida sem quebrar', async () => {
+    // O fluxo de implantação é `terraform apply` seguido da carga, e repetir o
+    // comando depois de uma falha no meio do caminho é o normal.
+    const { users, idGenerator, passwordHasher, clock } = seedingContainer.seeding;
+    const id = idGenerator.next();
+    const criar = async (): Promise<void> => {
+      if ((await users.findById(id)) !== null) {
+        return;
+      }
+      await users.save(
+        User.create({
+          id,
+          email: Email.create('repetido@ton.com.br'),
+          passwordHash: await passwordHasher.hash(SENHA),
+          failedLoginAttempts: 0,
+          lockedUntil: undefined,
+          createdAt: clock.now(),
+          version: 0,
+        }),
+      );
+    };
+
+    await criar();
+
+    await expect(criar()).resolves.toBeUndefined();
   });
 
   it('aplica a cota por usuário', async () => {

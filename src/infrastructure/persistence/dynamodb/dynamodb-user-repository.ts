@@ -54,15 +54,30 @@ export class DynamoDbUserRepository implements UserRepository {
    * então o caminho comum continua sendo uma escrita só.
    */
   public async registerFailedLogin(user: User, now: Date, policy: LockoutPolicy): Promise<User> {
-    const { Attributes } = await this.client.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: keys.user(user.id),
-        UpdateExpression: 'ADD failedLoginAttempts :one, version :one',
-        ExpressionAttributeValues: { ':one': 1 },
-        ReturnValues: 'ALL_NEW',
-      }),
-    );
+    const { Attributes } = await this.client
+      .send(
+        new UpdateCommand({
+          TableName: this.tableName,
+          Key: keys.user(user.id),
+          UpdateExpression: 'ADD failedLoginAttempts :one, version :one',
+          // Sem esta condição, o `ADD` **cria** o item quando ele não existe: o
+          // banco ficaria com um registro parcial permanente, só com chave e
+          // contador, e a reconstrução da entidade quebraria com erro de tipo em
+          // vez de resposta prevista.
+          ConditionExpression: 'attribute_exists(pk)',
+          ExpressionAttributeValues: { ':one': 1 },
+          ReturnValues: 'ALL_NEW',
+        }),
+      )
+      .catch((error: unknown) => {
+        if (error instanceof ConditionalCheckFailedException) {
+          // O usuário sumiu entre a leitura e esta escrita. Para quem chama é
+          // indistinguível de qualquer outra corrida perdida.
+          throw new ConcurrencyError('User', user.id);
+        }
+
+        throw error;
+      });
 
     const updated = toUser(Attributes as UserItem);
     const lockDurationMs = policy.lockDurationMs(updated.failedLoginAttempts);
@@ -76,12 +91,20 @@ export class DynamoDbUserRepository implements UserRepository {
       new UpdateCommand({
         TableName: this.tableName,
         Key: keys.user(user.id),
-        UpdateExpression: 'SET lockedUntil = :until',
-        ExpressionAttributeValues: { ':until': lockedUntil.toISOString() },
+        UpdateExpression: 'SET lockedUntil = :until ADD version :one',
+        // A única escrita que faltava avançar a versão. Sem isso, uma leitura
+        // feita entre as duas gravações veria um estado que a condição de
+        // concorrência consideraria atual.
+        ConditionExpression: 'attribute_exists(pk)',
+        ExpressionAttributeValues: { ':until': lockedUntil.toISOString(), ':one': 1 },
       }),
     );
 
-    return toUser({ ...toUserItem(updated), lockedUntil: lockedUntil.toISOString() });
+    return toUser({
+      ...toUserItem(updated),
+      lockedUntil: lockedUntil.toISOString(),
+      version: updated.version + 1,
+    });
   }
 
   /**

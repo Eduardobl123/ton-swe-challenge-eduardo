@@ -21,6 +21,11 @@ export class InMemoryUserRepository implements UserRepository {
     }
   }
 
+  /** Usado apenas pela carga inicial, que precisa saber se já gravou antes. */
+  public findById(id: string): Promise<User | null> {
+    return Promise.resolve(this.byId.get(id) ?? null);
+  }
+
   public findByEmail(email: Email): Promise<User | null> {
     for (const user of this.byId.values()) {
       if (user.email.equals(email)) {

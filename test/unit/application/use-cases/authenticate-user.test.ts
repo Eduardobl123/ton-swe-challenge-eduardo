@@ -269,6 +269,22 @@ describe('AuthenticateUser', () => {
       expect(usuario?.isLocked(AGORA)).toBe(true);
     });
 
+    it('trata como recusa comum o usuário que sumiu entre a leitura e a escrita', async () => {
+      // Transformar um estado anômalo em erro interno diria a quem sonda que
+      // algo diferente aconteceu ali.
+      const users: UserRepository = {
+        findByEmail: () => Promise.resolve(usuarioDemo()),
+        registerFailedLogin: () => Promise.reject(new ConcurrencyError('User', 'user-1')),
+        save: () => Promise.resolve(undefined),
+      };
+      const cenario = montar({ users });
+
+      await expect(
+        cenario.useCase.execute({ email: EMAIL, password: 'errada', ipAddress: undefined }),
+      ).rejects.toBeInstanceOf(InvalidCredentialsError);
+      expect(cenario.logger.events()).toContain('auth.login.concurrent_update');
+    });
+
     it('emite auth.login.failed em toda tentativa malsucedida', async () => {
       // Sem isso, um alerta baseado nesse evento ficaria cego justamente durante
       // um ataque concorrente.

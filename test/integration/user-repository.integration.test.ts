@@ -122,6 +122,40 @@ describe('DynamoDbUserRepository', () => {
       expect(persistido?.isLocked(AGORA)).toBe(true);
     });
 
+    it('recusa contabilizar falha para usuário inexistente, sem criar registro', async () => {
+      // Sem a condição de existência, o `ADD` cria o item: o banco ficaria com
+      // um registro parcial permanente, só com chave e contador, e reconstruir
+      // a entidade quebraria com erro de tipo em vez de resposta prevista.
+      const fantasma = User.create({
+        id: 'usuario-que-nunca-existiu',
+        email: Email.create('fantasma@ton.com.br'),
+        passwordHash: PasswordHash.create('$argon2id$x'),
+        failedLoginAttempts: 0,
+        lockedUntil: undefined,
+        createdAt: AGORA,
+        version: 0,
+      });
+
+      await expect(repo.registerFailedLogin(fantasma, AGORA, policy)).rejects.toBeInstanceOf(
+        ConcurrencyError,
+      );
+      await expect(repo.findById('usuario-que-nunca-existiu')).resolves.toBeNull();
+    });
+
+    it('a aplicação do bloqueio também avança a versão', async () => {
+      let atual = (await repo.findByEmail(usuario.email))!;
+      const versaoInicial = atual.version;
+
+      for (let i = 0; i < 5; i += 1) {
+        atual = await repo.registerFailedLogin(atual, AGORA, policy);
+      }
+
+      const persistido = (await repo.findByEmail(usuario.email))!;
+      // Cinco incrementos mais a escrita do bloqueio.
+      expect(persistido.version).toBe(versaoInicial + 6);
+      expect(atual.version).toBe(persistido.version);
+    });
+
     it('não bloqueia antes do limite', async () => {
       let atual = (await repo.findByEmail(usuario.email))!;
 

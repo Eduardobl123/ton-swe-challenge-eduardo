@@ -34,7 +34,7 @@ import { AlwaysReadyProbe, type ReadinessProbe } from '../infrastructure/system/
 import type { ProductRepository, RateLimiterStore, RefreshTokenRepository } from '../domain/ports';
 import { SystemClock } from '../infrastructure/system/system-clock';
 import { UuidV7IdGenerator } from '../infrastructure/system/uuid-v7-id-generator';
-import type { Product } from '../domain/entities';
+import type { Product, User } from '../domain/entities';
 import type { AppConfig } from '../infrastructure/config/env';
 
 /**
@@ -88,7 +88,7 @@ export interface UseCases {
  * apenas decide se a requisição segue adiante.
  */
 export interface Seeding {
-  readonly users: UserRepository;
+  readonly users: SeedableUserRepository;
   readonly products: SeedableProductRepository;
   readonly passwordHasher: PasswordHasher;
   readonly clock: Clock;
@@ -103,6 +103,18 @@ export interface Seeding {
  * caso de uso só para existir, então a capacidade fica aqui, restrita a quem
  * carrega os dados.
  */
+/**
+ * Repositório de usuários que a carga inicial consegue consultar por
+ * identificador.
+ *
+ * A porta do domínio busca por e-mail, que é o que a autenticação precisa.
+ * Carregar dados precisa de outra pergunta — "este registro já existe?" — e ela
+ * fica restrita a quem carrega, em vez de alargar o contrato do domínio.
+ */
+export interface SeedableUserRepository extends UserRepository {
+  findById(id: string): Promise<User | null>;
+}
+
 export interface SeedableProductRepository extends ProductRepository {
   add(product: Product): void | Promise<void>;
 }
@@ -227,7 +239,7 @@ export function buildContainer(config: AppConfig, logger: Logger): Container {
 }
 
 interface Persistence {
-  readonly users: UserRepository;
+  readonly users: SeedableUserRepository;
   readonly refreshTokens: RefreshTokenRepository;
   readonly products: SeedableProductRepository;
   readonly rateLimiterStore: RateLimiterStore;

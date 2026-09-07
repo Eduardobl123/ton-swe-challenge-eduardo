@@ -25,6 +25,13 @@ describe('InMemoryUserRepository', () => {
     await expect(repo.findByEmail(Email.create('MARIA@TON.COM.BR'))).resolves.not.toBeNull();
   });
 
+  it('encontra por identificador, o que a carga inicial usa para não duplicar', async () => {
+    const repo = new InMemoryUserRepository([usuario()]);
+
+    await expect(repo.findById('user-1')).resolves.not.toBeNull();
+    await expect(repo.findById('nao-existe')).resolves.toBeNull();
+  });
+
   it('devolve null para e-mail desconhecido', async () => {
     const repo = new InMemoryUserRepository([usuario()]);
 
