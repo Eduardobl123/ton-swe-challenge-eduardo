@@ -30,7 +30,7 @@ riscos. Esta tabela é a fonte de verdade sobre o que já roda.
 | [10](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/10) | Infraestrutura AWS com Terraform             | ✅ pronto   |
 | [11](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/11) | CI/CD e gate de cobertura                    | ✅ pronto   |
 | [12](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/12) | Documentação, ADRs e diagramas               | 🔄 em curso |
-| [13](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/13) | Testes ponta a ponta e contrato              | ⏳ pendente |
+| [13](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/13) | Testes ponta a ponta e contrato              | ✅ pronto   |
 
 ---
 
@@ -149,7 +149,7 @@ O mesmo `npm run db:seed` roda contra a AWS: basta não definir
 ninguém executa até a hora da entrega, que é justamente quando falharia.
 
 ```bash
-npm run test:integration    # 45 testes contra o banco de verdade
+npm run test:integration    # 48 testes contra o banco de verdade
 ```
 
 Eles provam o que duplo nenhum prova: escrita condicionada por versão,
@@ -233,17 +233,52 @@ primeira requisição. A referência completa e comentada está em
 ## Testes
 
 ```bash
-npm test              # unitários — rápidos, sem Docker
-npm run test:coverage # unitários com relatório de cobertura
-npm run test:integration  # contra o DynamoDB Local (issue #7)
-npm run test:e2e          # jornadas completas (issue #13)
+npm test                   # 530 unitários — rápidos, sem Docker
+npm run test:integration   # 48 contra o DynamoDB Local
+npm run test:e2e           # 26 jornadas sobre o sistema montado
+npm run test:coverage:all  # as três suítes, com o gate consolidado
+npm run verify:lambda      # o artefato publicado, no runtime oficial da AWS
 ```
 
-A pirâmide é deliberada. O núcleo tem gate de cobertura de 90% porque é código
-puro, sem I/O, onde não existe desculpa para não cobrir. Adaptadores ficam com
-os testes de integração, e as jornadas de ponta a ponta cobrem a composição.
+| Camada        | Testes | O que só ela prova                                                                        |
+| ------------- | -----: | ----------------------------------------------------------------------------------------- |
+| Unitários     |    530 | Cada regra isolada, incluindo os ramos que exigem entrada difícil de montar               |
+| Integração    |     48 | O que duplo nenhum prova: escrita condicionada, incremento atômico, transação             |
+| Ponta a ponta |     26 | A continuidade — token autenticando a chamada seguinte, cursor buscando a página seguinte |
+| Artefato      |      2 | Que o pacote publicado sobe no runtime da AWS e responde de verdade                       |
 
-Relatório HTML em `coverage/index.html` após `npm run test:coverage`.
+A pirâmide é deliberada, e cada camada existe porque a de baixo não alcança o
+que ela alcança. Cobertura consolidada das três suítes: **100%** de linhas,
+ramos e funções, com portão em 85% global e 95% em domínio e aplicação.
+
+Toda resposta dos testes ponta a ponta é conferida contra `docs/openapi.json` —
+corpo, status e ausência de campo não documentado. Foi assim que se descobriu
+que a API respondia `413` e `415` a quem só tinha sido avisado de `400`, `401`,
+`429` e `500`.
+
+Relatório HTML em `coverage/index.html`.
+
+### Carga
+
+Documental, fora do CI: latência medida em executor compartilhado oscila mais
+do que qualquer regressão que valeria detectar.
+
+```bash
+npm run test:load   # 50 conexões, 10s por cenário
+```
+
+MacBook com Apple Silicon, Node 24.20.0, persistência em memória, 200 produtos:
+
+| Cenário                    | req/s | p50   | p99   |    2xx | não-2xx |
+| -------------------------- | ----: | ----- | ----- | -----: | ------: |
+| Cota padrão (60/min)       | 9 408 | 4 ms  | 9 ms  |     60 |  94 017 |
+| Cota alta (limitador fora) | 1 863 | 26 ms | 43 ms | 18 627 |       0 |
+
+A primeira linha é a que importa: sob 50 conexões simultâneas passaram
+exatamente 60 requisições, e as outras 94 mil foram recusadas a 9,4 mil por
+segundo com p99 de 9 ms. Recusar é barato, que é a única forma de o limite
+proteger em vez de virar mais um gargalo. A segunda linha mede o caminho de
+leitura com o limitador fora do caminho, sem nenhum erro.
 
 ---
 
@@ -251,15 +286,15 @@ Relatório HTML em `coverage/index.html` após `npm run test:coverage`.
 
 Cada push e cada pull request rodam sete verificações em paralelo:
 
-| Verificação           | O que impede de entrar                                                      |
-| --------------------- | --------------------------------------------------------------------------- |
-| Tipos, lint e formato | Fronteira arquitetural violada, promessa não tratada, código fora de padrão |
-| Testes unitários      | Regressão no núcleo, com gate de 90% de cobertura em domínio e aplicação    |
-| Testes de integração  | Quebra nas garantias de concorrência, contra o DynamoDB de verdade          |
-| Contrato OpenAPI      | Rota alterada sem atualizar `docs/openapi.json`                             |
-| Build                 | Pacote que não compila, com o tamanho reportado a cada execução             |
-| Vulnerabilidades      | Dependência com falha de severidade alta ou crítica                         |
-| Infraestrutura        | Terraform malformado ou inválido                                            |
+| Verificação                | O que impede de entrar                                                      |
+| -------------------------- | --------------------------------------------------------------------------- |
+| Tipos, lint e formato      | Fronteira arquitetural violada, promessa não tratada, código fora de padrão |
+| Testes unitários           | Regressão no núcleo, com gate de 90% de cobertura em domínio e aplicação    |
+| Integração e ponta a ponta | Quebra de concorrência, de jornada ou de contrato, com gate consolidado     |
+| Contrato OpenAPI           | Rota alterada sem atualizar `docs/openapi.json`                             |
+| Artefato do Lambda         | Pacote que não compila, não empacota, ou não sobe no runtime oficial        |
+| Vulnerabilidades           | Dependência com falha de severidade alta ou crítica                         |
+| Infraestrutura             | Terraform malformado ou inválido                                            |
 
 A verificação de infraestrutura se declara ausente enquanto não houver arquivos
 `.tf`, e passa a validar sozinha quando a issue #10 os criar — cada módulo por

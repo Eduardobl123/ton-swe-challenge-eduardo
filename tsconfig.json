@@ -10,6 +10,9 @@
     "isolatedModules": true,
     "resolveJsonModule": true,
     "noEmit": true,
+    // A configuração de cobertura estende a base por import direto; sem isto o
+    // TypeScript recusa a extensão explícita que o Vite pede.
+    "allowImportingTsExtensions": true,
 
     /* Rigor de tipos — exigido pela issue #1. */
     "strict": true,
@@ -33,6 +36,7 @@
     "test/**/*.ts",
     "scripts/**/*.ts",
     "vitest.config.ts",
+    "vitest.coverage.config.ts",
     "tsup.config.ts"
   ]
 }

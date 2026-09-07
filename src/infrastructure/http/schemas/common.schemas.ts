@@ -23,9 +23,20 @@ export const problemDetailsSchema = z
   })
   .describe('Erro no formato RFC 9457.');
 
+/**
+ * Os status de erro que qualquer rota pode devolver.
+ *
+ * A lista inclui o que o próprio Fastify recusa antes de a rota executar — corpo
+ * acima do teto e mídia não suportada. Eles não aparecem no código das rotas, e
+ * por isso ficaram fora da documentação até os testes ponta a ponta compararem
+ * resposta real com contrato publicado: a API respondia 413 e 415 a quem só
+ * tinha sido avisado de 400, 401, 429 e 500.
+ */
 export const problemResponses = {
   400: problemDetailsSchema,
   401: problemDetailsSchema,
+  413: problemDetailsSchema,
+  415: problemDetailsSchema,
   429: problemDetailsSchema,
   500: problemDetailsSchema,
 } as const;

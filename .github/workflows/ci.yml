@@ -59,7 +59,7 @@ jobs:
           retention-days: 7
 
   integracao:
-    name: Testes de integração
+    name: Integração, ponta a ponta e cobertura consolidada
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -73,8 +73,19 @@ jobs:
         # vezes faria o CI e a máquina de quem desenvolve divergirem justamente
         # no que os testes de integração deveriam provar.
         run: docker compose up -d --wait
-      - name: Testes contra o banco
-        run: npm run test:integration
+      - name: As três suítes, com o gate consolidado
+        # Uma execução só, e não três relatórios mesclados depois: somar `lcov`
+        # de execuções separadas produz um arquivo que ninguém confere a olho.
+        # O relatório da suíte unitária sozinho erra nas duas direções — exclui
+        # os adaptadores do DynamoDB e não enxerga o que só a jornada percorre.
+        run: npm run test:coverage:all
+      - name: Publica o relatório consolidado
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cobertura-consolidada
+          path: coverage/
+          retention-days: 7
       - name: Registra o log do banco quando algo falha
         if: failure()
         run: docker compose logs --tail 100
