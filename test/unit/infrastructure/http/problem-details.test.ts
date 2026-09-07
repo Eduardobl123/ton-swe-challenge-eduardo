@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ERROR_CODES } from '../../../../src/domain/errors';
 import { problemDetails, statusFor } from '../../../../src/infrastructure/http/problem-details';
 import { authenticatedUserId } from '../../../../src/infrastructure/http/plugins/auth';
-import { toFieldError } from '../../../../src/infrastructure/http/plugins/error-handler';
+import { contextOf, toFieldError } from '../../../../src/infrastructure/http/plugins/error-handler';
 import type { FastifyRequest, FastifySchemaValidationError } from 'fastify';
 
 describe('problemDetails', () => {
@@ -101,5 +101,35 @@ describe('toFieldError', () => {
 
   it('usa uma mensagem genérica quando a validação não fornece uma', () => {
     expect(toFieldError(falha('/email')).message).toBe('valor inválido');
+  });
+});
+
+describe('contextOf', () => {
+  it('usa o padrão da rota, e não a URL recebida', () => {
+    // A rota vira etiqueta no relato de erro: usar a URL criaria uma etiqueta
+    // por cursor de paginação.
+    const contexto = contextOf({
+      requestId: 'req-1',
+      url: '/v1/products?cursor=abc',
+      routeOptions: { url: '/v1/products' },
+      authenticatedUser: { id: 'user-1' },
+    } as FastifyRequest);
+
+    expect(contexto).toEqual({
+      requestId: 'req-1',
+      route: '/v1/products',
+      userId: 'user-1',
+    });
+  });
+
+  it('cai para a URL quando nenhuma rota casou', () => {
+    const contexto = contextOf({
+      requestId: 'req-1',
+      url: '/v1/nao-existe',
+      routeOptions: {},
+      authenticatedUser: undefined,
+    } as FastifyRequest);
+
+    expect(contexto).toMatchObject({ route: '/v1/nao-existe', userId: undefined });
   });
 });

@@ -3,13 +3,19 @@ import {
   hasZodFastifySchemaValidationErrors,
   isResponseSerializationError,
 } from 'fastify-type-provider-zod';
-import type { FastifyError, FastifyPluginCallback, FastifySchemaValidationError } from 'fastify';
-import type { Logger } from '../../../domain/ports';
+import type {
+  FastifyError,
+  FastifyPluginCallback,
+  FastifyRequest,
+  FastifySchemaValidationError,
+} from 'fastify';
+import type { ErrorContext, ErrorReporter, Logger } from '../../../domain/ports';
 import { fromAppError, isAppError, problemDetails, statusFor } from '../problem-details';
 import type { ProblemFieldError } from '../problem-details';
 
 export interface ErrorHandlerOptions {
   readonly logger: Logger;
+  readonly errorReporter: ErrorReporter;
 }
 
 /**
@@ -23,7 +29,11 @@ export interface ErrorHandlerOptions {
  * A regra é simples: erro previsto vira a resposta que ele descreve; qualquer
  * outra coisa vira 500 genérico, com o detalhe indo apenas para o log.
  */
-const plugin: FastifyPluginCallback<ErrorHandlerOptions> = (app, { logger }, done) => {
+const plugin: FastifyPluginCallback<ErrorHandlerOptions> = (
+  app,
+  { logger, errorReporter },
+  done,
+) => {
   app.setNotFoundHandler((request, reply) => {
     void reply
       .status(404)
@@ -61,6 +71,7 @@ const plugin: FastifyPluginCallback<ErrorHandlerOptions> = (app, { logger }, don
         route: instance,
         reason: error.message,
       });
+      errorReporter.capture(error, contextOf(request));
       void reply.status(500).send(problemDetails({ code: 'INTERNAL_ERROR', instance, requestId }));
       return;
     }
@@ -95,6 +106,10 @@ const plugin: FastifyPluginCallback<ErrorHandlerOptions> = (app, { logger }, don
       route: instance,
       reason: cause.message,
     });
+    // Só o imprevisto é relatado. Credencial inválida, limite excedido e token
+    // expirado são resultados previstos: enviá-los encheria o alerta de eventos
+    // cotidianos até ninguém mais olhar para ele.
+    errorReporter.capture(cause, contextOf(request));
     void reply.status(500).send(problemDetails({ code: 'INTERNAL_ERROR', instance, requestId }));
   });
 
@@ -109,6 +124,20 @@ const plugin: FastifyPluginCallback<ErrorHandlerOptions> = (app, { logger }, don
  * vira `(corpo)`, porque devolver cadeia vazia obrigaria o cliente a tratar o
  * caso sem nenhuma pista do que fazer.
  */
+/**
+ * Contexto que acompanha o erro relatado.
+ *
+ * A rota é o **padrão** casado pelo roteador, não a URL recebida: como ela vira
+ * etiqueta no relato, usar a URL criaria uma etiqueta por cursor de paginação.
+ */
+export function contextOf(request: FastifyRequest): ErrorContext {
+  return {
+    requestId: request.requestId,
+    route: request.routeOptions.url ?? request.url,
+    userId: request.authenticatedUser?.id,
+  };
+}
+
 export function toFieldError(issue: FastifySchemaValidationError): ProblemFieldError {
   return {
     field: issue.instancePath.replace(/^\//, '').replaceAll('/', '.') || '(corpo)',

@@ -31,9 +31,25 @@ mapeadas. Erros esperados de negócio — credencial inválida, limite excedido,
 token expirado — não geram evento. Sem DSN configurado, a aplicação sobe
 normalmente, o que mantém desenvolvimento e CI limpos.
 
-**Métricas** no formato de métricas embutidas do CloudWatch, emitidas pelo
-próprio stdout: sucesso e falha de login, bloqueios, requisições limitadas e
+**Métricas** no formato embutido do CloudWatch, emitidas pelo próprio stdout:
+sucesso e falha de login, requisições barradas pela cota, falhas de servidor e
 duração por rota. Viram métrica sem nenhuma chamada de API.
+
+A estrutura é montada pelo projeto em vez de vir da biblioteca oficial. Ela
+detecta ambiente, mantém estado global e descarrega de forma assíncrona — tudo o
+que complica teste e encerramento no Lambda —, enquanto o formato em si é
+documentado, estável e cabe em uma função.
+
+O resultado do login é derivado do status da resposta, e não de um contador
+dentro do caso de uso. É exato para o que estas métricas medem e evita
+atravessar a porta de métricas por todas as camadas para contar duas coisas.
+Recortes mais finos, como bloqueio de conta, saem de filtros sobre o log
+estruturado, que é a forma padrão no CloudWatch e se apoia nos nomes de evento
+já estáveis.
+
+A dimensão é sempre o **padrão** da rota, nunca a URL: a URL traz o cursor de
+paginação, e uma dimensão de cardinalidade infinita vira uma série temporal por
+requisição.
 
 ## Alternativas consideradas
 
@@ -61,7 +77,7 @@ identificador. Campos sensíveis não vazam mesmo com log em nível de depuraç�
 o que é garantido por teste. Métricas e alarmes sem custo de latência.
 
 **Negativas.** Acoplamento ao Sentry como fornecedor, ainda que restrito a um
-adaptador. O formato de métricas embutidas é específico da AWS. É preciso
+adaptador atrás de uma porta. O formato de métricas embutidas é específico da AWS. É preciso
 descarregar os eventos do Sentry antes de a invocação terminar, sob pena de
 perder o erro justamente quando ele acontece.
 

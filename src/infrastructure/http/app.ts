@@ -14,6 +14,7 @@ import type { Container } from '../../main/container';
 import { authPlugin } from './plugins/auth';
 import { errorHandlerPlugin } from './plugins/error-handler';
 import { rateLimitPlugin } from './plugins/rate-limit';
+import { observabilityPlugin } from './plugins/observability';
 import { requestIdPlugin } from './plugins/request-id';
 import { authRoutes } from './routes/auth.routes';
 import { healthRoutes } from './routes/health.routes';
@@ -71,7 +72,14 @@ export async function buildApp(container: Container): Promise<FastifyInstance> {
   });
 
   await app.register(requestIdPlugin);
-  await app.register(errorHandlerPlugin, { logger: container.logger });
+  await app.register(observabilityPlugin, {
+    logger: container.logger,
+    metrics: container.services.metrics,
+  });
+  await app.register(errorHandlerPlugin, {
+    logger: container.logger,
+    errorReporter: container.services.errorReporter,
+  });
   await app.register(authPlugin, { tokenSigner: container.services.tokenSigner });
   await app.register(rateLimitPlugin, { rateLimiter: container.services.rateLimiter });
 

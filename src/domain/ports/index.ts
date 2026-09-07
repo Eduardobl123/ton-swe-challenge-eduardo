@@ -1,5 +1,7 @@
 export type { Clock } from './clock';
+export type { ErrorContext, ErrorReporter } from './error-reporter';
 export type { IdGenerator } from './id-generator';
+export type { MetricDimensions, MetricUnit, MetricsRecorder } from './metrics-recorder';
 export type { LogFields, Logger } from './logger';
 export type { PasswordHasher } from './password-hasher';
 export type { RateLimitWindows, RateLimiterStore } from './rate-limiter-store';

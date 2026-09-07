@@ -107,7 +107,7 @@ describe('aplicação HTTP', () => {
     it('falha imprevista vira 500 sem detalhe para o cliente', async () => {
       // Devolver a mensagem de uma exceção não tratada entregaria caminho de
       // arquivo e nome de tabela.
-      const app = await buildAppWithFailingList('throws');
+      const { app } = await buildAppWithFailingList('throws');
       const sessao = await login(app);
 
       const resposta = await app.inject({
@@ -125,7 +125,7 @@ describe('aplicação HTTP', () => {
     it('resposta fora do contrato declarado vira 500, não corpo torto', async () => {
       // É defeito nosso, não do cliente: entregar a resposta errada seria pior
       // que recusar, porque o consumidor programaria em cima dela.
-      const app = await buildAppWithFailingList('invalid-shape');
+      const { app } = await buildAppWithFailingList('invalid-shape');
       const sessao = await login(app);
 
       const resposta = await app.inject({

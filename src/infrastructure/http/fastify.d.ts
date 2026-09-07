@@ -22,6 +22,8 @@ declare module 'fastify' {
   interface FastifyRequest {
     /** Correlação entre resposta, log e evento de erro. Sempre presente. */
     requestId: string;
+    /** Instante de chegada, em precisão de nanossegundos, para medir a duração. */
+    startedAt: bigint;
     /** Preenchido apenas nas rotas que exigem autenticação. */
     authenticatedUser: AuthenticatedUser | undefined;
   }

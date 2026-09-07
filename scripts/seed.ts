@@ -2,8 +2,7 @@ import { Product, User } from '../src/domain/entities';
 import { Email, Money } from '../src/domain/value-objects';
 import { loadConfig } from '../src/infrastructure/config/env';
 import { buildContainer } from '../src/main/container';
-import { JsonConsoleLogger, minimumLevelFor } from '../src/infrastructure/observability';
-import { SystemClock } from '../src/infrastructure/system/system-clock';
+import { PinoLogger } from '../src/infrastructure/observability';
 
 /**
  * Carga inicial de dados.
@@ -32,9 +31,11 @@ const USER_ID = 'seed-user-0001';
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const logger = new JsonConsoleLogger({
-    clock: new SystemClock(),
-    minimumLevel: minimumLevelFor(config.log.level),
+  const logger = new PinoLogger({
+    level: config.log.level,
+    environment: config.nodeEnv,
+    version: config.version,
+    pretty: !config.isProduction,
   });
   const container = buildContainer(config, logger);
   const { users, products, passwordHasher, clock } = container.seeding;

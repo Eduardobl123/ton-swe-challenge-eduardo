@@ -3,6 +3,12 @@ import { buildContainer, type Container } from '../../src/main/container';
 import { loadConfig } from '../../src/infrastructure/config/env';
 import { seedForDevelopment } from '../../src/main/dev-seed';
 import { RecordingLogger } from './fakes';
+import type {
+  ErrorContext,
+  MetricDimensions,
+  MetricUnit,
+  MetricsRecorder,
+} from '../../src/domain/ports';
 import type { FastifyInstance } from 'fastify';
 
 export const DEMO_EMAIL = 'demo@ton.com.br';
@@ -21,6 +27,42 @@ export interface TestApp {
   readonly app: FastifyInstance;
   readonly container: Container;
   readonly logger: RecordingLogger;
+  readonly metrics: RecordingMetrics;
+  readonly reported: ReportedError[];
+}
+
+export interface RecordedMetric {
+  readonly name: string;
+  readonly value: number;
+  readonly unit: string;
+  readonly dimensions: Record<string, string>;
+}
+
+/** Guarda o que seria publicado, para afirmar sobre painel e alarme. */
+export class RecordingMetrics implements MetricsRecorder {
+  public readonly records: RecordedMetric[] = [];
+
+  public record(
+    name: string,
+    value: number,
+    unit: MetricUnit,
+    dimensions: MetricDimensions = {},
+  ): void {
+    this.records.push({ name, value, unit, dimensions: { ...dimensions } });
+  }
+
+  public names(): string[] {
+    return this.records.map((r) => r.name);
+  }
+
+  public find(name: string): RecordedMetric | undefined {
+    return this.records.find((r) => r.name === name);
+  }
+}
+
+export interface ReportedError {
+  readonly error: unknown;
+  readonly context: ErrorContext;
 }
 
 /**
@@ -33,11 +75,28 @@ export interface TestApp {
  */
 export async function buildTestApp(overrides: NodeJS.ProcessEnv = {}): Promise<TestApp> {
   const logger = new RecordingLogger();
-  const container = buildContainer(loadConfig({ ...baseEnv, ...overrides }), logger);
+  const metrics = new RecordingMetrics();
+  const reported: ReportedError[] = [];
+  const base = buildContainer(loadConfig({ ...baseEnv, ...overrides }), logger);
+
+  // Substitui os adaptadores de observabilidade por gravadores: o que precisa
+  // ser provado é o que sairia dali, e não que o Sentry aceita conexão.
+  const container: Container = {
+    ...base,
+    services: {
+      ...base.services,
+      metrics,
+      errorReporter: {
+        capture: (error, context) => {
+          reported.push({ error, context });
+        },
+      },
+    },
+  };
 
   await seedForDevelopment(container, { email: DEMO_EMAIL, password: DEMO_PASSWORD });
 
-  return { app: await buildApp(container), container, logger };
+  return { app: await buildApp(container), container, logger, metrics, reported };
 }
 
 /**
@@ -65,8 +124,20 @@ export async function buildAppWithReadiness(ready: boolean): Promise<FastifyInst
  */
 export async function buildAppWithFailingList(
   behaviour: 'throws' | 'invalid-shape',
-): Promise<FastifyInstance> {
-  const container = buildContainer(loadConfig(baseEnv), new RecordingLogger());
+): Promise<{ app: FastifyInstance; reported: ReportedError[] }> {
+  const reported: ReportedError[] = [];
+  const base = buildContainer(loadConfig(baseEnv), new RecordingLogger());
+  const container: Container = {
+    ...base,
+    services: {
+      ...base.services,
+      errorReporter: {
+        capture: (error, context) => {
+          reported.push({ error, context });
+        },
+      },
+    },
+  };
   await seedForDevelopment(container, { email: DEMO_EMAIL, password: DEMO_PASSWORD });
 
   const listProducts = {
@@ -81,10 +152,12 @@ export async function buildAppWithFailingList(
           } as never),
   };
 
-  return buildApp({
+  const app = await buildApp({
     ...container,
     useCases: { ...container.useCases, listProducts: listProducts as never },
   });
+
+  return { app, reported };
 }
 
 export interface Session {

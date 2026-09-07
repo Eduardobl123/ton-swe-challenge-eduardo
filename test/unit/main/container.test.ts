@@ -3,6 +3,11 @@ import { buildContainer } from '../../../src/main/container';
 import { loadConfig } from '../../../src/infrastructure/config/env';
 import { ValidationError } from '../../../src/domain/errors';
 import { RecordingLogger } from '../../support/fakes';
+import {
+  EmfMetricsRecorder,
+  NoopMetricsRecorder,
+  SentryErrorReporter,
+} from '../../../src/infrastructure/observability';
 
 const baseEnv = {
   JWT_SECRET: 'um-segredo-de-teste-com-mais-de-trinta-e-dois-caracteres',
@@ -66,6 +71,40 @@ describe('buildContainer', () => {
       expect(() =>
         montar({ LOCKOUT_BASE_DELAY_MS: '60000', LOCKOUT_MAX_DELAY_MS: '30000' }),
       ).toThrow(ValidationError);
+    });
+  });
+
+  describe('observabilidade', () => {
+    it('sem DSN, o relato de erro é descartado', () => {
+      // Exigir DSN para subir obrigaria cada pessoa a ter conta do Sentry para
+      // rodar testes.
+      const { errorReporter } = montar().services;
+
+      expect(() => {
+        errorReporter.capture(new Error('x'), { requestId: 'r', route: '/x' });
+      }).not.toThrow();
+    });
+
+    it('com DSN, o relato vai para o Sentry', () => {
+      const { errorReporter } = montar({
+        SENTRY_DSN: 'https://exemplo@o0.ingest.sentry.io/0',
+      }).services;
+
+      expect(errorReporter).toBeInstanceOf(SentryErrorReporter);
+    });
+
+    it('fora de produção as métricas são descartadas', () => {
+      // Sem CloudWatch lendo o stdout, elas só encheriam o terminal.
+      expect(montar().services.metrics).toBeInstanceOf(NoopMetricsRecorder);
+    });
+
+    it('em produção as métricas são publicadas', () => {
+      const { metrics } = montar({
+        NODE_ENV: 'production',
+        PERSISTENCE: 'dynamodb',
+      }).services;
+
+      expect(metrics).toBeInstanceOf(EmfMetricsRecorder);
     });
   });
 });

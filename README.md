@@ -26,7 +26,7 @@ riscos. Esta tabela é a fonte de verdade sobre o que já roda.
 | [6](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/6)   | Rate limit por usuário e por IP              | ✅ pronto   |
 | [7](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/7)   | Persistência DynamoDB e ambiente local       | ✅ pronto   |
 | [8](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/8)   | Adaptador HTTP Fastify e OpenAPI             | ✅ pronto   |
-| [9](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/9)   | Observabilidade: logs, request-id e Sentry   | ⏳ pendente |
+| [9](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/9)   | Observabilidade: logs, request-id e Sentry   | ✅ pronto   |
 | [10](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/10) | Infraestrutura AWS com Terraform             | ⏳ pendente |
 | [11](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/11) | CI/CD e gate de cobertura                    | ✅ pronto   |
 | [12](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/12) | Documentação, ADRs e diagramas               | 🔄 em curso |
@@ -301,11 +301,65 @@ pre-commit roda lint e formatação apenas nos arquivos alterados.
 
 ## Observabilidade
 
-Cada requisição recebe ou propaga um `x-request-id`. O mesmo identificador
-aparece no log estruturado, no corpo do erro devolvido ao cliente e no evento
-enviado ao Sentry, o que permite seguir uma requisição da resposta até a causa.
-Logs saem em JSON de uma linha, com senha, hash e token removidos por
-configuração de redaction. Detalhes na issue #9.
+### Da reclamação até a causa, em três saltos
+
+Alguém relata que uma requisição falhou e traz o `x-request-id` que veio na
+resposta. Com ele:
+
+```bash
+# 1. a linha da requisição, com rota, status, duração e usuário
+aws logs filter-log-events --log-group-name /aws/lambda/ton-challenge \
+  --filter-pattern '{ $.requestId = "01JP2K…" }'
+
+# 2. no Sentry, a mesma etiqueta leva ao evento com a pilha
+#    requestId:01JP2K…
+```
+
+O identificador é aceito da entrada quando o cliente já traz um, o que permite
+seguir a requisição através de mais de um serviço, e devolvido no cabeçalho de
+toda resposta.
+
+### Log
+
+JSON de uma linha, escrito no stdout e recolhido pelo CloudWatch sem agente.
+Toda linha carrega ambiente e versão, então achar as requisições de uma
+implantação específica não exige correlacionar com o histórico de deploy.
+
+O nome do evento vem primeiro e é estável: `auth.login.failed` é agregável e
+alertável, enquanto uma frase muda quando alguém a reescreve e leva o alarme
+junto.
+
+Senha, hash, token e cabeçalho de autorização são removidos por configuração.
+Antes disso, porém, o próprio tipo dos campos de log aceita apenas valores
+primitivos: passar uma entidade ou um `PasswordHash` para o log **não compila**.
+O vazamento acidental deixa de depender da atenção de quem escreve a chamada.
+
+### Métricas
+
+Publicadas no formato embutido do CloudWatch, pela mesma escrita no stdout que
+já acontece — sem chamada de rede no caminho da requisição.
+
+| Métrica                         | Dimensões | Para quê                                         |
+| ------------------------------- | --------- | ------------------------------------------------ |
+| `RequestDuration`               | rota      | Latência por rota, base do alarme de p99         |
+| `LoginSuccess` / `LoginFailure` | —         | Proporção de falha, que denuncia ataque em curso |
+| `RateLimited`                   | rota      | Quanto a cota está mordendo                      |
+| `ServerError`                   | rota      | Base do alarme de 5xx                            |
+
+A dimensão é sempre o padrão da rota, nunca a URL: a URL traz o cursor de
+paginação, e uma dimensão de cardinalidade infinita vira uma série temporal por
+requisição.
+
+### Relato de erro
+
+Só falha imprevista chega ao Sentry. Credencial inválida, limite excedido e
+token expirado são resultados previstos, e enviá-los encheria o alerta de
+eventos cotidianos até ninguém mais olhar para ele.
+
+O evento leva o identificador da requisição, a rota e o identificador do
+usuário — nunca o e-mail. Cabeçalhos, cookies e corpo são removidos antes do
+envio. Sem DSN configurado a aplicação sobe normalmente, o que mantém
+desenvolvimento e CI limpos.
 
 ---
 

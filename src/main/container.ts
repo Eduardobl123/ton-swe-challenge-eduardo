@@ -4,8 +4,10 @@ import { AuthenticateUser, ListProducts } from '../application/use-cases';
 import { LockoutPolicy } from '../domain/value-objects';
 import type {
   Clock,
+  ErrorReporter,
   IdGenerator,
   Logger,
+  MetricsRecorder,
   PasswordHasher,
   TokenSigner,
   UserRepository,
@@ -30,6 +32,12 @@ import { InMemoryProductRepository } from '../infrastructure/persistence/in-memo
 import { InMemoryRateLimiterStore } from '../infrastructure/persistence/in-memory/in-memory-rate-limiter-store';
 import { InMemoryRefreshTokenRepository } from '../infrastructure/persistence/in-memory/in-memory-refresh-token-repository';
 import { InMemoryUserRepository } from '../infrastructure/persistence/in-memory/in-memory-user-repository';
+import {
+  EmfMetricsRecorder,
+  NoopErrorReporter,
+  NoopMetricsRecorder,
+  SentryErrorReporter,
+} from '../infrastructure/observability';
 import { AlwaysReadyProbe, type ReadinessProbe } from '../infrastructure/system/readiness-probe';
 import type { ProductRepository, RateLimiterStore, RefreshTokenRepository } from '../domain/ports';
 import { SystemClock } from '../infrastructure/system/system-clock';
@@ -128,6 +136,10 @@ export interface Services {
    * nem a decisão de negócio.
    */
   readonly tokenSigner: TokenSigner;
+  /** Encaminha falha imprevista para quem opera. */
+  readonly errorReporter: ErrorReporter;
+  /** Publica contagem e duração, base de painel e alarme. */
+  readonly metrics: MetricsRecorder;
 }
 
 /**
@@ -164,6 +176,7 @@ export function buildContainer(config: AppConfig, logger: Logger): Container {
   });
 
   const clock = new SystemClock();
+  const observability = buildObservability(config, logger, clock);
   const passwordHasher = new Argon2PasswordHasher();
   const tokenSigner = new JoseTokenSigner({
     secret: config.auth.jwtSecret,
@@ -234,6 +247,8 @@ export function buildContainer(config: AppConfig, logger: Logger): Container {
       }),
       readiness,
       tokenSigner,
+      errorReporter: observability.errorReporter,
+      metrics: observability.metrics,
     },
   };
 }
@@ -282,5 +297,42 @@ function buildPersistence(config: AppConfig, cursors: CursorCodec, logger: Logge
     products: new DynamoDbProductRepository(documents, tableName, cursors),
     rateLimiterStore: new DynamoDbRateLimiterStore(documents, tableName),
     readiness: new DynamoDbReadinessProbe(base, tableName, logger),
+  };
+}
+
+interface Observability {
+  readonly errorReporter: ErrorReporter;
+  readonly metrics: MetricsRecorder;
+}
+
+/**
+ * Monta o relato de erro e a coleta de métricas.
+ *
+ * O Sentry só entra quando há DSN. Exigi-lo para subir obrigaria cada pessoa a
+ * ter uma conta para rodar testes, e a alternativa comum — um DSN de brincadeira
+ * commitado — polui o projeto real de alguém.
+ *
+ * As métricas ficam desligadas fora de produção pelo mesmo motivo prático: em
+ * desenvolvimento elas só encheriam o terminal, já que não há CloudWatch lendo o
+ * stdout.
+ */
+function buildObservability(config: AppConfig, logger: Logger, clock: Clock): Observability {
+  const { sentryDsn, sentryTracesSampleRate } = config.observability;
+
+  if (sentryDsn !== undefined) {
+    SentryErrorReporter.initialise({
+      dsn: sentryDsn,
+      environment: config.nodeEnv,
+      release: config.version,
+      tracesSampleRate: sentryTracesSampleRate,
+    });
+  }
+
+  return {
+    errorReporter:
+      sentryDsn === undefined ? new NoopErrorReporter() : new SentryErrorReporter(logger),
+    metrics: config.isProduction
+      ? new EmfMetricsRecorder(clock, config.nodeEnv)
+      : new NoopMetricsRecorder(),
   };
 }

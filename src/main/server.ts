@@ -1,7 +1,6 @@
 import { ValidationError } from '../domain/errors';
 import { EnvValidationError, loadConfig } from '../infrastructure/config/env';
-import { JsonConsoleLogger, minimumLevelFor } from '../infrastructure/observability';
-import { SystemClock } from '../infrastructure/system/system-clock';
+import { PinoLogger } from '../infrastructure/observability';
 import { buildApp } from '../infrastructure/http/app';
 import { buildContainer, type Container } from './container';
 import { seedForDevelopment } from './dev-seed';
@@ -21,9 +20,13 @@ function main(): void {
     const config = loadConfig();
     container = buildContainer(
       config,
-      new JsonConsoleLogger({
-        clock: new SystemClock(),
-        minimumLevel: minimumLevelFor(config.log.level),
+      new PinoLogger({
+        level: config.log.level,
+        environment: config.nodeEnv,
+        version: config.version,
+        // Formato legível só fora de produção: no Lambda o CloudWatch lê o
+        // stdout, e cor de terminal viraria lixo em toda linha.
+        pretty: !config.isProduction,
       }),
     );
   } catch (error) {
