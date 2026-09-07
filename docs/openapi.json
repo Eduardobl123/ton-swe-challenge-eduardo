@@ -1,0 +1,1679 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Ton SWE Challenge — API",
+    "description": "Autenticação por JWT e catálogo paginado. Erros seguem a RFC 9457 e sempre trazem `code` e `requestId`.",
+    "version": "1.0.0"
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "schemas": {}
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Indica que o processo está vivo",
+        "tags": [
+          "Operação"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok"
+                      ]
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "version"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "summary": "Indica que as dependências respondem",
+        "tags": [
+          "Operação"
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ready",
+                        "unavailable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ready",
+                        "unavailable"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/login": {
+      "post": {
+        "summary": "Autentica e abre uma sessão",
+        "tags": [
+          "Autenticação"
+        ],
+        "description": "Devolve um access token de curta duração e um refresh token de uso único. Credencial inválida, conta inexistente e conta temporariamente bloqueada produzem a mesma resposta, de propósito.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string",
+                    "maxLength": 254,
+                    "format": "email",
+                    "pattern": "^(?!\\.)(?!.*\\.\\.)([A-Za-z0-9_'+\\-\\.]*)[A-Za-z0-9_+-]@([A-Za-z0-9][A-Za-z0-9\\-]*\\.)+[A-Za-z]{2,}$",
+                    "description": "E-mail cadastrado."
+                  },
+                  "password": {
+                    "type": "string",
+                    "minLength": 8,
+                    "maxLength": 128,
+                    "description": "Senha, de 8 a 128 caracteres."
+                  }
+                },
+                "required": [
+                  "email",
+                  "password"
+                ],
+                "description": "Credenciais de acesso."
+              }
+            }
+          },
+          "description": "Credenciais de acesso."
+        },
+        "responses": {
+          "200": {
+            "description": "Sessão recém-criada.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accessToken": {
+                      "type": "string",
+                      "description": "JWT de acesso, usado no cabeçalho Authorization."
+                    },
+                    "refreshToken": {
+                      "type": "string",
+                      "description": "Credencial de renovação, de uso único. Guarde com o mesmo cuidado da senha."
+                    },
+                    "tokenType": {
+                      "type": "string",
+                      "enum": [
+                        "Bearer"
+                      ]
+                    },
+                    "expiresIn": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "Validade do access token, em segundos."
+                    },
+                    "userId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "accessToken",
+                    "refreshToken",
+                    "tokenType",
+                    "expiresIn",
+                    "userId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Sessão recém-criada."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/refresh": {
+      "post": {
+        "summary": "Renova a sessão",
+        "tags": [
+          "Autenticação"
+        ],
+        "description": "Rotaciona o refresh token: o apresentado deixa de valer e um novo par é emitido. Reapresentar um token já usado derruba a sessão inteira.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "refreshToken": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "required": [
+                  "refreshToken"
+                ],
+                "description": "Credencial de renovação obtida no login ou na renovação anterior."
+              }
+            }
+          },
+          "description": "Credencial de renovação obtida no login ou na renovação anterior."
+        },
+        "responses": {
+          "200": {
+            "description": "Par de credenciais da sessão.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "accessToken": {
+                      "type": "string",
+                      "description": "JWT de acesso, usado no cabeçalho Authorization."
+                    },
+                    "refreshToken": {
+                      "type": "string",
+                      "description": "Credencial de renovação, de uso único. Guarde com o mesmo cuidado da senha."
+                    },
+                    "tokenType": {
+                      "type": "string",
+                      "enum": [
+                        "Bearer"
+                      ]
+                    },
+                    "expiresIn": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991,
+                      "description": "Validade do access token, em segundos."
+                    }
+                  },
+                  "required": [
+                    "accessToken",
+                    "refreshToken",
+                    "tokenType",
+                    "expiresIn"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Par de credenciais da sessão."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/logout": {
+      "post": {
+        "summary": "Encerra a sessão",
+        "tags": [
+          "Autenticação"
+        ],
+        "description": "Revoga a família do refresh token apresentado. O access token em circulação permanece válido até expirar, no máximo o tempo de `expiresIn`.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "refreshToken": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 512
+                  }
+                },
+                "required": [
+                  "refreshToken"
+                ],
+                "description": "Credencial de renovação obtida no login ou na renovação anterior."
+              }
+            }
+          },
+          "description": "Credencial de renovação obtida no login ou na renovação anterior."
+        },
+        "responses": {
+          "204": {
+            "description": "Default Response"
+          },
+          "400": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/products": {
+      "get": {
+        "summary": "Lista os produtos ativos",
+        "tags": [
+          "Catálogo"
+        ],
+        "description": "Paginação por cursor. Siga `page.nextCursor` até ele vir ausente; não existe contagem total nem número de página.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "description": "Itens por página. Padrão 20, teto 100. Acima do teto é ajustado, não recusado."
+          },
+          {
+            "schema": {
+              "type": "string",
+              "maxLength": 2048
+            },
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "description": "Continuação devolvida na página anterior. Trate como texto opaco."
+          }
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Página do catálogo.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "sku": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "priceCents": {
+                            "type": "integer",
+                            "minimum": -9007199254740991,
+                            "maximum": 9007199254740991,
+                            "description": "Preço em centavos inteiros."
+                          },
+                          "createdAt": {
+                            "type": "string",
+                            "format": "date-time",
+                            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z))$"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sku",
+                          "name",
+                          "description",
+                          "priceCents",
+                          "createdAt"
+                        ],
+                        "additionalProperties": false,
+                        "description": "Produto do catálogo."
+                      }
+                    },
+                    "page": {
+                      "type": "object",
+                      "properties": {
+                        "limit": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991,
+                          "description": "Tamanho efetivamente aplicado."
+                        },
+                        "nextCursor": {
+                          "description": "Ausente na última página. Devolva como recebeu.",
+                          "type": "string"
+                        },
+                        "hasMore": {
+                          "type": "boolean"
+                        },
+                        "limitClamped": {
+                          "type": "boolean",
+                          "description": "Verdadeiro quando o limite pedido foi ajustado."
+                        }
+                      },
+                      "required": [
+                        "limit",
+                        "hasMore",
+                        "limitClamped"
+                      ],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": [
+                    "data",
+                    "page"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Página do catálogo."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Erro no formato RFC 9457.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    "code": {
+                      "type": "string",
+                      "enum": [
+                        "VALIDATION_ERROR",
+                        "UNAUTHENTICATED",
+                        "TOKEN_INVALID",
+                        "TOKEN_EXPIRED",
+                        "NOT_FOUND",
+                        "INTERNAL_ERROR",
+                        "INVALID_CURSOR",
+                        "INVALID_CREDENTIALS",
+                        "ACCOUNT_LOCKED",
+                        "REFRESH_TOKEN_INVALID",
+                        "REFRESH_TOKEN_REUSE_DETECTED",
+                        "CONCURRENT_MODIFICATION",
+                        "RATE_LIMIT_EXCEEDED"
+                      ]
+                    },
+                    "instance": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Presente apenas em falhas de validação.",
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "field": {
+                            "type": "string"
+                          },
+                          "message": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "field",
+                          "message"
+                        ],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "code",
+                    "instance",
+                    "requestId"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Erro no formato RFC 9457."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Autenticação",
+      "description": "Abertura, renovação e encerramento de sessão."
+    },
+    {
+      "name": "Catálogo",
+      "description": "Listagem de produtos ativos."
+    },
+    {
+      "name": "Operação",
+      "description": "Sondas de vida e de prontidão."
+    }
+  ]
+}

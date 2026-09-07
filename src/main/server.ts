@@ -2,7 +2,9 @@ import { ValidationError } from '../domain/errors';
 import { EnvValidationError, loadConfig } from '../infrastructure/config/env';
 import { JsonConsoleLogger, minimumLevelFor } from '../infrastructure/observability';
 import { SystemClock } from '../infrastructure/system/system-clock';
+import { buildApp } from '../infrastructure/http/app';
 import { buildContainer, type Container } from './container';
+import { seedForDevelopment } from './dev-seed';
 
 /**
  * Entrypoint local.
@@ -52,21 +54,40 @@ function main(): void {
     throw error;
   }
 
-  const { persistence, http, nodeEnv, version } = container.config;
-  const { lockout } = container.policies;
+  void start(container);
+}
 
-  console.log('Configuração validada com sucesso.');
+async function start(container: Container): Promise<void> {
+  const { http, nodeEnv, version, isProduction } = container.config;
+
+  // Os adaptadores em memória sobem vazios. Sem a carga, subir a aplicação
+  // entregaria uma API que ninguém consegue exercitar à mão. A persistência
+  // real e o script de carga chegam na issue #7.
+  if (!isProduction) {
+    await seedForDevelopment(container, {
+      email: process.env.SEED_USER_EMAIL ?? 'demo@ton.com.br',
+      password: process.env.SEED_USER_PASSWORD ?? 'Desafio@Ton2026',
+    });
+  }
+
+  const app = await buildApp(container);
+
+  try {
+    await app.listen({ port: http.port, host: '0.0.0.0' });
+  } catch (error) {
+    console.error('Falha ao subir o servidor:', error);
+    process.exitCode = 1;
+    return;
+  }
+
+  console.log(`API no ar em http://localhost:${String(http.port)}`);
   console.log(`  ambiente ......... ${nodeEnv} (versão ${version})`);
-  console.log(`  porta HTTP ....... ${String(http.port)}`);
-  console.log(`  tabela DynamoDB .. ${persistence.tableName} @ ${persistence.region}`);
-  console.log(`  endpoint local ... ${persistence.endpoint ?? '(AWS real)'}`);
-  console.log(
-    `  bloqueio ......... após ${String(lockout.maxAttempts)} falhas, ` +
-      `de ${String(lockout.lockDurationMs(lockout.maxAttempts) / 1000)}s ` +
-      `até ${String(lockout.maxDelayMs / 1000)}s`,
-  );
-  console.log('');
-  console.log('O servidor HTTP entra em serviço na issue #8.');
+  if (container.config.http.swaggerEnabled) {
+    console.log(`  documentação ..... http://localhost:${String(http.port)}/docs`);
+  }
+  if (!isProduction) {
+    console.log('  usuário demo ..... demo@ton.com.br / Desafio@Ton2026');
+  }
 }
 
 main();

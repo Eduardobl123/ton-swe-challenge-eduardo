@@ -23,7 +23,7 @@ riscos. Esta tabela é a fonte de verdade sobre o que já roda.
 | [5](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/5)   | Listagem paginada por cursor                 | ✅ pronto   |
 | [6](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/6)   | Rate limit por usuário e por IP              | ✅ pronto   |
 | [7](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/7)   | Persistência DynamoDB e ambiente local       | ⏳ pendente |
-| [8](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/8)   | Adaptador HTTP Fastify e OpenAPI             | ⏳ pendente |
+| [8](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/8)   | Adaptador HTTP Fastify e OpenAPI             | ✅ pronto   |
 | [9](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/9)   | Observabilidade: logs, request-id e Sentry   | ⏳ pendente |
 | [10](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/10) | Infraestrutura AWS com Terraform             | ⏳ pendente |
 | [11](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/11) | CI/CD e gate de cobertura                    | ⏳ pendente |
@@ -116,9 +116,12 @@ cp .env.example .env # ajuste o JWT_SECRET antes de subir
 npm run dev          # valida a configuração e sobe o servidor
 ```
 
-O `npm run dev` de hoje valida o `.env` e descreve a configuração resolvida. Se
-faltar uma variável ou o `JWT_SECRET` for curto demais, ele lista tudo que
-precisa ser corrigido e encerra. O servidor HTTP entra em serviço na issue #8.
+A API sobe com dados de demonstração já carregados, então dá para exercitá-la
+imediatamente. Se faltar uma variável ou o `JWT_SECRET` for curto demais, a
+aplicação lista o que corrigir e encerra, em vez de subir quebrada.
+
+Documentação interativa em `http://localhost:3000/docs`.
+Usuário de demonstração: `demo@ton.com.br` / `Desafio@Ton2026`.
 
 Gere um segredo real com:
 
@@ -126,24 +129,42 @@ Gere um segredo real com:
 openssl rand -base64 48
 ```
 
-### Fluxo completo (a partir das issues #7 e #8)
+### Exercitando a API
 
 ```bash
-docker compose up -d      # DynamoDB Local
-npm run db:seed           # usuário demo + 250 produtos
-npm run dev
-
-# login
-curl -s -X POST http://localhost:3000/v1/auth/login \
+# 1. login — devolve access token e refresh token
+TOKENS=$(curl -s -X POST http://localhost:3000/v1/auth/login \
   -H 'content-type: application/json' \
-  -d '{"email":"demo@ton.com.br","password":"Desafio@Ton2026"}'
+  -d '{"email":"demo@ton.com.br","password":"Desafio@Ton2026"}')
 
-# listagem protegida e paginada
-curl -s 'http://localhost:3000/v1/products?limit=20' \
-  -H "authorization: Bearer $ACCESS_TOKEN"
+ACCESS=$(echo "$TOKENS"  | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
+REFRESH=$(echo "$TOKENS" | sed -n 's/.*"refreshToken":"\([^"]*\)".*/\1/p')
+
+# 2. listagem protegida e paginada
+curl -s 'http://localhost:3000/v1/products?limit=5' -H "authorization: Bearer $ACCESS"
+
+# 3. renovação — o refresh token apresentado deixa de valer
+curl -s -X POST http://localhost:3000/v1/auth/refresh \
+  -H 'content-type: application/json' -d "{\"refreshToken\":\"$REFRESH\"}"
+
+# 4. encerrar a sessão
+curl -s -X POST http://localhost:3000/v1/auth/logout \
+  -H 'content-type: application/json' -H "authorization: Bearer $ACCESS" \
+  -d "{\"refreshToken\":\"$REFRESH\"}"
 ```
 
-Documentação interativa em `http://localhost:3000/docs`.
+Alguns comportamentos que valem observar:
+
+- Senha errada e conta inexistente devolvem **exatamente** a mesma resposta.
+- Reapresentar um refresh token já usado derruba a sessão inteira, inclusive o
+  token emitido na renovação.
+- A listagem devolve `RateLimit-Limit` e `RateLimit-Remaining` mesmo quando a
+  requisição passa. Estourando a cota, o `Retry-After` indica quando a cota de
+  fato volta, não o fim do minuto.
+- Todo erro segue a RFC 9457 e carrega `code` e `requestId`.
+
+O contrato completo está em [`docs/openapi.json`](docs/openapi.json), gerado por
+`npm run openapi:export`.
 
 ---
 
@@ -202,9 +223,10 @@ Relatório HTML em `coverage/index.html` após `npm run test:coverage`.
 ## Qualidade de código
 
 ```bash
-npm run typecheck   # tsc em modo strict
-npm run lint        # ESLint, incluindo as fronteiras arquiteturais
-npm run format      # Prettier
+npm run typecheck      # tsc em modo strict
+npm run lint           # ESLint, incluindo as fronteiras arquiteturais
+npm run format         # Prettier
+npm run openapi:export # regenera docs/openapi.json a partir das rotas
 ```
 
 O TypeScript roda com `strict`, `noUncheckedIndexedAccess` e

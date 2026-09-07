@@ -25,6 +25,7 @@ src/
 │
 ├── infrastructure/    ← adaptadores. Implementam as portas com tecnologia real.
 │   ├── http/              Fastify: rotas, plugins, schemas zod, error handler
+│   │                      (app.ts monta a instância; não sabe onde roda)
 │   ├── persistence/
 │   │   ├── dynamodb/      repositórios sobre a tabela única
 │   │   └── in-memory/     mesmos repositórios em memória, para teste e dev

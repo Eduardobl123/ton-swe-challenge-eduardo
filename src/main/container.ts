@@ -2,7 +2,14 @@ import { RateLimiter, buildRateLimitPolicies } from '../application/rate-limit';
 import { Logout, RefreshSession, SessionIssuer } from '../application/session';
 import { AuthenticateUser, ListProducts } from '../application/use-cases';
 import { LockoutPolicy } from '../domain/value-objects';
-import type { Logger } from '../domain/ports';
+import type {
+  Clock,
+  IdGenerator,
+  Logger,
+  PasswordHasher,
+  TokenSigner,
+  UserRepository,
+} from '../domain/ports';
 import type { RateLimitPolicies } from '../application/rate-limit';
 import {
   Argon2PasswordHasher,
@@ -15,6 +22,7 @@ import { InMemoryProductRepository } from '../infrastructure/persistence/in-memo
 import { InMemoryRateLimiterStore } from '../infrastructure/persistence/in-memory/in-memory-rate-limiter-store';
 import { InMemoryRefreshTokenRepository } from '../infrastructure/persistence/in-memory/in-memory-refresh-token-repository';
 import { InMemoryUserRepository } from '../infrastructure/persistence/in-memory/in-memory-user-repository';
+import { AlwaysReadyProbe, type ReadinessProbe } from '../infrastructure/system/readiness-probe';
 import { SystemClock } from '../infrastructure/system/system-clock';
 import { UuidV7IdGenerator } from '../infrastructure/system/uuid-v7-id-generator';
 import type { AppConfig } from '../infrastructure/config/env';
@@ -42,6 +50,15 @@ import type { AppConfig } from '../infrastructure/config/env';
  */
 export interface Container {
   readonly config: AppConfig;
+  readonly logger: Logger;
+  /**
+   * Acesso direto aos adaptadores de escrita, usado apenas pela carga inicial.
+   *
+   * Não é atalho para os casos de uso: é o reconhecimento de que popular dados
+   * não é intenção de negócio e não deveria inventar um caso de uso só para
+   * existir.
+   */
+  readonly seeding: Seeding;
   readonly policies: Policies;
   readonly useCases: UseCases;
   readonly services: Services;
@@ -60,8 +77,23 @@ export interface UseCases {
  * O limitador não é caso de uso: ele não realiza intenção de negócio nenhuma,
  * apenas decide se a requisição segue adiante.
  */
+export interface Seeding {
+  readonly users: UserRepository;
+  readonly products: InMemoryProductRepository;
+  readonly passwordHasher: PasswordHasher;
+  readonly clock: Clock;
+  readonly idGenerator: IdGenerator;
+}
+
 export interface Services {
   readonly rateLimiter: RateLimiter;
+  readonly readiness: ReadinessProbe;
+  /**
+   * Exposto porque a verificação do token acontece na borda HTTP, antes de
+   * qualquer caso de uso: quem chega sem credencial válida não deve consumir
+   * nem a decisão de negócio.
+   */
+  readonly tokenSigner: TokenSigner;
 }
 
 /**
@@ -133,6 +165,8 @@ export function buildContainer(config: AppConfig, logger: Logger): Container {
 
   return {
     config,
+    logger,
+    seeding: { users, products, passwordHasher, clock, idGenerator },
     policies: { lockout, rateLimit },
     useCases: {
       authenticateUser: new AuthenticateUser({
@@ -162,6 +196,8 @@ export function buildContainer(config: AppConfig, logger: Logger): Container {
         logger,
         failOpen: config.rateLimit.failOpen,
       }),
+      readiness: new AlwaysReadyProbe(),
+      tokenSigner,
     },
   };
 }

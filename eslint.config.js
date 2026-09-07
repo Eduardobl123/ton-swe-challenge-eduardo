@@ -144,9 +144,9 @@ export default tseslint.config(
     },
   },
 
-  /* Entrypoints: escrevem no stdout antes do logger estruturado existir (issue #9). */
+  /* Entrypoints e scripts de linha de comando escrevem no stdout por natureza. */
   {
-    files: ['src/main/server.ts', 'src/main/lambda.ts'],
+    files: ['src/main/server.ts', 'src/main/lambda.ts', 'scripts/**/*.ts'],
     rules: { 'no-console': 'off' },
   },
 
