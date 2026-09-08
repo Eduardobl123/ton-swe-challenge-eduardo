@@ -1,8 +1,21 @@
 {
   "compilerOptions": {
     /* Saída e módulos — ESM puro; o bundle final é gerado pelo tsup/esbuild. */
-    "target": "ES2023",
-    "lib": ["ES2023"],
+    // Alvo e biblioteca acompanham o runtime, e não a última versão do
+    // TypeScript. O Node 24 implementa ES2024 por inteiro, mais os grupos
+    // `ESNext` listados abaixo (auxiliares de iterador, métodos de conjunto,
+    // `Error.isError`, `Promise.try`, `Array.fromAsync`). Declarar menos do que
+    // o runtime oferece esconde API disponível; declarar mais deixa passar no
+    // typecheck código que quebra na invocação. A lista segue `@tsconfig/node24`.
+    "target": "ES2024",
+    "lib": [
+      "ES2024",
+      "ESNext.Array",
+      "ESNext.Collection",
+      "ESNext.Error",
+      "ESNext.Iterator",
+      "ESNext.Promise"
+    ],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "moduleDetection": "force",
