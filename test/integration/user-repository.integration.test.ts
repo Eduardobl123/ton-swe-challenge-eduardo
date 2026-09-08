@@ -156,6 +156,35 @@ describe('DynamoDbUserRepository', () => {
       expect(atual.version).toBe(persistido.version);
     });
 
+    it('tentativas simultâneas no limiar deixam o maior bloqueio, não o último', async () => {
+      // A ConditionExpression de monotonicidade é o que garante isso. Sem ela, a
+      // requisição que calculou o bloqueio menor pode gravar por último e
+      // encurtar a punição — bastaria atacar em paralelo para manter o bloqueio
+      // no mínimo (issue #24).
+      const atual = (await repo.findByEmail(usuario.email))!;
+
+      // Vinte falhas de uma vez: várias cruzam o limiar juntas, cada uma
+      // calculando uma duração diferente a partir do contador que recebeu. Com
+      // esta política, a partir da décima falha a duração satura no teto, então
+      // o maior bloqueio possível é conhecido: 15 minutos após AGORA.
+      const resultados = await Promise.all(
+        Array.from({ length: 20 }, () => repo.registerFailedLogin(atual, AGORA, policy)),
+      );
+
+      const persistido = (await repo.findByEmail(usuario.email))!;
+
+      expect(persistido.failedLoginAttempts).toBe(20);
+      expect(persistido.lockedUntil).toEqual(new Date(AGORA.getTime() + 900_000));
+
+      // E nenhuma chamada anuncia um bloqueio maior do que o que ficou gravado:
+      // o retorno é o estado real, não a reconstrução do que ela mesma calculou.
+      for (const r of resultados) {
+        expect(r.lockedUntil?.getTime() ?? 0).toBeLessThanOrEqual(
+          persistido.lockedUntil!.getTime(),
+        );
+      }
+    });
+
     it('não bloqueia antes do limite', async () => {
       let atual = (await repo.findByEmail(usuario.email))!;
 

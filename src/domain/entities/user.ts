@@ -126,6 +126,8 @@ export class User {
    * mantido, e não apagado. Uma tentativa malsucedida jamais deve reduzir a
    * proteção da conta: afrouxar `LOCKOUT_MAX_ATTEMPTS` em produção destrancaria
    * contas já bloqueadas na próxima senha errada.
+   *
+   * Pela mesma razão, o instante de expiração só avança — ver `extendLock`.
    */
   public recordFailedLogin(now: Date, policy: LockoutPolicy): User {
     const failedLoginAttempts = this.props.failedLoginAttempts + 1;
@@ -134,9 +136,36 @@ export class User {
     return new User({
       ...this.props,
       failedLoginAttempts,
-      lockedUntil:
-        lockDurationMs > 0 ? new Date(now.getTime() + lockDurationMs) : this.props.lockedUntil,
+      lockedUntil: this.extendLock(now, lockDurationMs),
     });
+  }
+
+  /**
+   * Estende o bloqueio, nunca o encurta.
+   *
+   * Duas tentativas simultâneas que cruzam o limiar calculam durações
+   * diferentes — a que conta 5 falhas pede 30s, a que conta 6 pede 60s — e nada
+   * ordena as gravações que se seguem. Tomar sempre o instante mais distante faz
+   * o resultado independer da ordem de chegada; sem isso, a tentativa que
+   * calculou o bloqueio menor pode gravar por último e encurtar uma punição já
+   * aplicada, que é exatamente o que quem ataca em paralelo procura (issue #24).
+   *
+   * O adaptador DynamoDB impõe a mesma regra por `ConditionExpression`, porque
+   * lá as duas escritas são de fato concorrentes; aqui a garantia é do domínio,
+   * e é o que mantém `InMemoryUserRepository` fiel ao comportamento real.
+   */
+  private extendLock(now: Date, lockDurationMs: number): Date | undefined {
+    const { lockedUntil } = this.props;
+
+    if (lockDurationMs === 0) {
+      return lockedUntil;
+    }
+
+    const candidate = new Date(now.getTime() + lockDurationMs);
+
+    return lockedUntil !== undefined && lockedUntil.getTime() >= candidate.getTime()
+      ? lockedUntil
+      : candidate;
   }
 
   /** Zera contador e bloqueio após uma autenticação bem-sucedida. */

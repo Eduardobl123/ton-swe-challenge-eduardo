@@ -1,5 +1,6 @@
 import { ConditionalCheckFailedException } from '@aws-sdk/client-dynamodb';
 import { GetCommand, PutCommand, QueryCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { unmarshall } from '@aws-sdk/util-dynamodb';
 import { ConcurrencyError } from '../../../domain/errors';
 import type { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import type { User } from '../../../domain/entities';
@@ -52,6 +53,13 @@ export class DynamoDbUserRepository implements UserRepository {
    * O bloqueio é aplicado numa segunda escrita, condicionada ao total que a
    * primeira devolveu. Só acontece a partir da tentativa que atinge o limite,
    * então o caminho comum continua sendo uma escrita só.
+   *
+   * Separar contagem de bloqueio deixa as duas escritas concorrentes entre si, e
+   * o DynamoDB não ordena escritas independentes. Por isso a segunda é
+   * condicionada também ao valor atual de `lockedUntil`: o bloqueio só avança.
+   *
+   * @throws {ConcurrencyError} quando o usuário deixa de existir no meio do
+   *   processo — a única falha real das duas escritas.
    */
   public async registerFailedLogin(user: User, now: Date, policy: LockoutPolicy): Promise<User> {
     const { Attributes } = await this.client
@@ -87,24 +95,55 @@ export class DynamoDbUserRepository implements UserRepository {
     }
 
     const lockedUntil = new Date(now.getTime() + lockDurationMs);
-    await this.client.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: keys.user(user.id),
-        UpdateExpression: 'SET lockedUntil = :until ADD version :one',
-        // A única escrita que faltava avançar a versão. Sem isso, uma leitura
-        // feita entre as duas gravações veria um estado que a condição de
-        // concorrência consideraria atual.
-        ConditionExpression: 'attribute_exists(pk)',
-        ExpressionAttributeValues: { ':until': lockedUntil.toISOString(), ':one': 1 },
-      }),
-    );
+    const { Attributes: locked } = await this.client
+      .send(
+        new UpdateCommand({
+          TableName: this.tableName,
+          Key: keys.user(user.id),
+          UpdateExpression: 'SET lockedUntil = :until ADD version :one',
+          // Duas condições em uma. `attribute_exists(pk)` é a de sempre: o
+          // usuário sumiu entre as escritas. A segunda torna o bloqueio
+          // monotônico — ele só avança, nunca retrocede.
+          //
+          // Sem ela, duas tentativas que cruzam o limiar gravam sem ordem: a que
+          // contou 5 falhas pede 30s, a que contou 6 pede 60s, e se a de 30s
+          // chegar por último ela encurta um bloqueio já aplicado. Quem ataca em
+          // paralelo consegue assim manter a punição no mínimo.
+          //
+          // A comparação é lexicográfica, e vale porque `lockedUntil` é gravado
+          // com `toISOString()`: largura fixa, sempre em UTC, então a ordem
+          // alfabética coincide com a cronológica. Trocar esse formato quebra a
+          // condição em silêncio — ver `toUserItem` em `user.mapper.ts`.
+          ConditionExpression:
+            'attribute_exists(pk) AND (attribute_not_exists(lockedUntil) OR lockedUntil < :until)',
+          ExpressionAttributeValues: { ':until': lockedUntil.toISOString(), ':one': 1 },
+          ReturnValues: 'ALL_NEW',
+          // Distingue as duas causas de falha da condição acima: com o item em
+          // mãos, a causa foi a monotonicidade; sem ele, o usuário não existe
+          // mais.
+          ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
+        }),
+      )
+      .catch((error: unknown) => {
+        if (!(error instanceof ConditionalCheckFailedException)) {
+          throw error;
+        }
 
-    return toUser({
-      ...toUserItem(updated),
-      lockedUntil: lockedUntil.toISOString(),
-      version: updated.version + 1,
-    });
+        if (error.Item === undefined) {
+          throw new ConcurrencyError('User', user.id);
+        }
+
+        // Outra requisição já gravou um bloqueio igual ou mais longo. É o
+        // resultado desejado, não uma falha: nada a corrigir, e o estado a
+        // devolver é o que ficou gravado.
+        //
+        // O item vem no formato bruto do serviço. O `DocumentClient` só
+        // desempacota o retorno de sucesso — seu middleware não alcança o corpo
+        // da exceção —, então a conversão é feita aqui.
+        return { Attributes: unmarshall(error.Item) };
+      });
+
+    return toUser(locked as UserItem);
   }
 
   /**

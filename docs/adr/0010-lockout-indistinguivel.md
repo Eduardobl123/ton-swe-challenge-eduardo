@@ -69,3 +69,26 @@ uma experiência ruim, deliberadamente escolhida.
 log e na métrica, de modo que o suporte consegue explicar o que houve. Num
 produto real, o passo seguinte seria notificar o titular por e-mail — o canal
 que já prova posse da conta, e portanto não vaza nada a quem não a possui.
+
+## Atualização — bloqueio monotônico (issue #24)
+
+A decisão acima continua valendo; o que segue registra uma garantia que faltava
+ser explícita.
+
+Contar tentativas e aplicar o bloqueio são duas escritas, e o DynamoDB não ordena
+escritas independentes. Duas tentativas simultâneas que cruzam o limiar calculam
+durações diferentes — a que conta cinco falhas pede 30s, a que conta seis pede
+60s — e, sem coordenação, a que calculou o bloqueio menor podia gravar por último
+e encurtar uma punição já aplicada. Quem atacasse em paralelo mantinha o bloqueio
+no mínimo, esvaziando a defesa que esta ADR descreve.
+
+A gravação passou a ser condicionada ao valor vigente de `lockedUntil`: o
+instante de expiração só avança. O resultado deixa de depender da ordem de
+chegada. A condição vale sobre a comparação lexicográfica do ISO-8601, que
+coincide com a cronológica por ser um formato de largura fixa em UTC.
+
+Isso fecha uma porta que o teto de 15 minutos não fechava: o teto limita o dano
+de um bloqueio longo, não o encurtamento de um bloqueio legítimo.
+
+A regra impede também um desbloqueio administrativo por esse caminho. Não existe
+hoje; se vier, precisa de escrita própria, fora de `registerFailedLogin`.
