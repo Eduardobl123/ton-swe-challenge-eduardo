@@ -48,6 +48,39 @@ JWT_SECRET=$TF_VAR_jwt_secret \
 npm run db:seed
 ```
 
+## Pelo GitHub Actions
+
+O fluxo `Deploy` faz os mesmos três passos acima, por `workflow_dispatch`, num
+executor `arm64` — a arquitetura da função, para que o artefato publicado seja o
+mesmo que a verificação subiu.
+
+O environment `dev` do repositório precisa de:
+
+| Onde             | Nome                  | Obrigatório | Para quê                                                       |
+| ---------------- | --------------------- | ----------- | -------------------------------------------------------------- |
+| Variável do repo | `AWS_DEPLOY_ROLE_ARN` | **sim**     | Role assumida por OIDC. Vazia, o fluxo se declara indisponível |
+| Variável do repo | `AWS_REGION`          | **sim**     | Região de destino                                              |
+| Secret           | `JWT_SECRET`          | **sim**     | Vira o parâmetro cifrado no SSM. Mínimo de 32 caracteres       |
+| Secret           | `SENTRY_DSN`          | não         | Ausente desliga o Sentry, sem criar o parâmetro                |
+
+O `JWT_SECRET` é conferido no primeiro passo, antes de qualquer chamada à AWS:
+sem ele o Terraform pediria o valor pela entrada padrão e travaria até o
+timeout. `TABLE_NAME` **não** é configurável — a carga inicial lê o nome do
+output do Terraform, para que não existam duas fontes de verdade.
+
+Trocar o `JWT_SECRET` é uma rotação disruptiva: ela invalida todos os access
+tokens e **também todos os cursores de paginação** em circulação, porque a mesma
+chave deriva o AES-GCM do cursor.
+
+O `APP_VERSION` da função publicada recebe o SHA do commit, o que faz o `/health`
+responder qual código está no ar e o Sentry agrupar eventos por release.
+
+> **Uma execução só.** O estado do Terraform é local (veja
+> [Estado remoto](#estado-remoto)) e o runner é efêmero: o segundo disparo do
+> fluxo começa sem estado, tenta criar de novo o que já existe e falha. Enquanto
+> o backend remoto não entrar, trate o deploy automatizado como provisionamento
+> inicial, e faça as reaplicações da máquina de quem opera.
+
 ## Conferindo
 
 ```bash
@@ -123,8 +156,11 @@ de acesso restrito.
 
 ## O que não foi executado
 
-`terraform apply` não foi rodado: não há conta AWS neste ambiente. O que foi
-verificado de fato:
+`terraform apply` não foi rodado: não há conta AWS neste ambiente. O fluxo
+`Deploy` também não foi disparado ponta a ponta, pela mesma razão — o que se
+corrigiu nele foi a ausência do empacotamento e das variáveis obrigatórias, e
+isso se confere lendo o workflow, não uma execução verde. O que foi verificado
+de fato:
 
 - `terraform fmt -check` e `terraform validate` passam em cada um dos cinco
   módulos, isoladamente, como o CI faz.
