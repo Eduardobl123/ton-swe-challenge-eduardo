@@ -52,7 +52,7 @@ jobs:
         run: npm run test:coverage
       - name: Publica o relatório
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cobertura
           path: coverage/
@@ -81,7 +81,7 @@ jobs:
         run: npm run test:coverage:all
       - name: Publica o relatório consolidado
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: cobertura-consolidada
           path: coverage/
