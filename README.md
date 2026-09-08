@@ -16,21 +16,21 @@ Resposta ao desafio técnico back-end da Ton/Stone.
 O trabalho está fatiado em issues, cada uma com escopo, critérios de aceite e
 riscos. Esta tabela é a fonte de verdade sobre o que já roda.
 
-| #                                                                         | Entrega                                      | Status      |
-| ------------------------------------------------------------------------- | -------------------------------------------- | ----------- |
-| [1](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/1)   | Bootstrap, tooling e fronteiras hexagonais   | ✅ pronto   |
-| [2](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/2)   | Domínio: entidades, value objects e portas   | ✅ pronto   |
-| [3](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/3)   | Login com argon2id, JWT e lockout            | ✅ pronto   |
-| [4](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/4)   | Refresh token rotativo com detecção de reuso | ✅ pronto   |
-| [5](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/5)   | Listagem paginada por cursor                 | ✅ pronto   |
-| [6](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/6)   | Rate limit por usuário e por IP              | ✅ pronto   |
-| [7](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/7)   | Persistência DynamoDB e ambiente local       | ✅ pronto   |
-| [8](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/8)   | Adaptador HTTP Fastify e OpenAPI             | ✅ pronto   |
-| [9](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/9)   | Observabilidade: logs, request-id e Sentry   | ✅ pronto   |
-| [10](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/10) | Infraestrutura AWS com Terraform             | ✅ pronto   |
-| [11](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/11) | CI/CD e gate de cobertura                    | ✅ pronto   |
-| [12](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/12) | Documentação, ADRs e diagramas               | 🔄 em curso |
-| [13](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/13) | Testes ponta a ponta e contrato              | ✅ pronto   |
+| #                                                                         | Entrega                                      | Status    |
+| ------------------------------------------------------------------------- | -------------------------------------------- | --------- |
+| [1](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/1)   | Bootstrap, tooling e fronteiras hexagonais   | ✅ pronto |
+| [2](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/2)   | Domínio: entidades, value objects e portas   | ✅ pronto |
+| [3](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/3)   | Login com argon2id, JWT e lockout            | ✅ pronto |
+| [4](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/4)   | Refresh token rotativo com detecção de reuso | ✅ pronto |
+| [5](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/5)   | Listagem paginada por cursor                 | ✅ pronto |
+| [6](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/6)   | Rate limit por usuário e por IP              | ✅ pronto |
+| [7](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/7)   | Persistência DynamoDB e ambiente local       | ✅ pronto |
+| [8](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/8)   | Adaptador HTTP Fastify e OpenAPI             | ✅ pronto |
+| [9](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/9)   | Observabilidade: logs, request-id e Sentry   | ✅ pronto |
+| [10](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/10) | Infraestrutura AWS com Terraform             | ✅ pronto |
+| [11](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/11) | CI/CD e gate de cobertura                    | ✅ pronto |
+| [12](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/12) | Documentação, ADRs e diagramas               | ✅ pronto |
+| [13](https://github.com/Eduardobl123/ton-swe-challenge-eduardo/issues/13) | Testes ponta a ponta e contrato              | ✅ pronto |
 
 ---
 

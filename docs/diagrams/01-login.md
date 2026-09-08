@@ -14,8 +14,10 @@ propósito no eixo do tempo: sem ela, a resposta mais rápida denunciaria que o
 e-mail não está cadastrado.
 
 O contador de tentativas é incrementado **pelo banco**, e não lido e regravado
-pela aplicação. É o detalhe que faz o bloqueio valer contra ataque automatizado,
-e está destacado no diagrama porque a forma intuitiva de escrevê-lo é a errada.
+pela aplicação. É um dos dois detalhes que fazem o bloqueio valer contra ataque
+automatizado, e está destacado no diagrama porque a forma intuitiva de escrevê-lo
+é a errada. O outro é a escrita do bloqueio ser condicionada ao valor vigente,
+de modo que ele só avança — sem isso, atacar em paralelo o encurtava.
 
 ```mermaid
 flowchart TD
@@ -40,7 +42,7 @@ flowchart TD
     K --> K2{"Registro ainda existe?"}
     K2 -- não --> K3["Corrida perdida<br/>registra auth.login.concurrent_update"]
     K3 --> R401
-    K2 -- sim --> K4["Aplica o bloqueio sobre o total devolvido<br/>backoff exponencial, teto de 15 min"]
+    K2 -- sim --> K4["Aplica o bloqueio sobre o total devolvido<br/>backoff exponencial, teto de 15 min<br/>escrita condicionada: o bloqueio só avança"]
     K4 --> R401
 
     J -- sim --> M["recordSuccessfulLogin<br/>zera o contador"]
@@ -73,6 +75,20 @@ permanente no banco.
 Quando a condição falha, o registro sumiu no meio do fluxo. A requisição termina
 no mesmo 401 das demais, e a anomalia fica só no log: transformá-la em erro
 interno diria a quem sonda que ali aconteceu algo diferente.
+
+## Por que o bloqueio só avança
+
+Contar e bloquear são duas escritas, e o DynamoDB não ordena escritas
+independentes. Duas tentativas simultâneas que cruzam o limiar calculam durações
+diferentes — a que conta cinco falhas pede 30s, a que conta seis pede 60s — e a
+que calculou o menor pode chegar por último.
+
+Por isso a segunda escrita é condicionada também ao valor atual de `lockedUntil`,
+e não apenas à existência do registro: o instante de expiração nunca retrocede, e
+o resultado independe da ordem de chegada. Sem essa condição, bastava disparar
+tentativas em paralelo para manter a punição no mínimo. A comparação é
+lexicográfica, o que só é válido porque a data é gravada em ISO-8601 — largura
+fixa, sempre em UTC. Ver [ADR 0010](../adr/0010-lockout-indistinguivel.md).
 
 O caso de vinte tentativas em paralelo está fixado em teste ponta a ponta, e a
 regressão foi verificada trocando o incremento atômico de volta pela leitura

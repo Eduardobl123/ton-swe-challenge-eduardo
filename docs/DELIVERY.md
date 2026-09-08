@@ -5,21 +5,21 @@ de julgamento.
 
 ## Bloqueadores
 
-- [ ] **Repositório público.** O enunciado exige. Esquecer é eliminatório.
+- [x] **Repositório público.** O enunciado exige. Esquecer é eliminatório.
 
   ```bash
   gh repo edit Eduardobl123/ton-swe-challenge-eduardo --visibility public
   gh repo view Eduardobl123/ton-swe-challenge-eduardo --json visibility
   ```
 
-- [ ] **Nenhum segredo no histórico.** Confirmar que `.env`, `*.tfstate` e
+- [x] **Nenhum segredo no histórico.** Confirmar que `.env`, `*.tfstate` e
       chaves nunca foram commitados.
 
   ```bash
   git log --all --name-only --pretty=format: | sort -u | grep -E '^\.env$|\.tfstate|\.pem$|credentials' || echo "limpo"
   ```
 
-- [ ] **O PDF do enunciado não está no repositório.** É material marcado como
+- [x] **O PDF do enunciado não está no repositório.** É material marcado como
       confidencial pela Stone e o repositório será público. Já está no
       `.gitignore`; confirmar que não entrou antes disso.
 
@@ -29,11 +29,11 @@ de julgamento.
 
 ## Código
 
-- [ ] CI verde no ramo principal.
+- [x] CI verde no ramo principal.
 - [ ] `npm ci && npm run typecheck && npm run lint && npm test` passa em clone limpo.
-- [ ] `npm run test:coverage` atinge os limites configurados.
-- [ ] `docs/openapi.json` regenerado e idêntico ao que a aplicação produz.
-- [ ] `LICENSE` presente na raiz.
+- [x] `npm run test:coverage` atinge os limites configurados.
+- [x] `docs/openapi.json` regenerado e idêntico ao que a aplicação produz.
+- [x] `LICENSE` presente na raiz.
 
 ## Infraestrutura
 
@@ -49,13 +49,34 @@ de julgamento.
 
 ## Documentação
 
-- [ ] README com a tabela de status refletindo a realidade.
-- [ ] Credenciais do usuário de demonstração documentadas para o avaliador.
-- [ ] Diagramas conferidos contra o código, não apenas contra o plano.
+- [x] README com a tabela de status refletindo a realidade.
+- [x] Credenciais do usuário de demonstração documentadas para o avaliador.
+- [x] Diagramas conferidos contra o código, não apenas contra o plano.
 - [ ] `AI_USAGE.md` revisado.
-- [ ] ADRs cobrindo toda decisão com alternativa defensável.
+- [x] ADRs cobrindo toda decisão com alternativa defensável.
 
 ## Verificação final
 
 - [ ] Clonar o repositório em um diretório novo e seguir o README do zero, sem
       usar conhecimento prévio. Se algum passo falhar, é bug de documentação.
+
+---
+
+## O que ainda não pôde ser marcado, e por quê
+
+Os itens de **Infraestrutura** exigem uma conta AWS real: `terraform apply`, o
+seed contra a tabela provisionada, as quatro chamadas na URL do API Gateway, o
+cold start e o `terraform destroy`. Nenhum deles é verificável sem credencial.
+
+Os dois itens restantes exigem um ambiente que a máquina de desenvolvimento atual
+não oferece:
+
+- **Clone limpo** (`npm ci && npm run typecheck && npm run lint && npm test`) e a
+  **verificação final** seguindo o README do zero dependem de `docker compose`
+  para o DynamoDB Local. Os comandos passam no repositório atual e no CI, que sobe
+  o banco de verdade — o que falta é o percurso completo em máquina nova.
+- **`AI_USAGE.md` revisado** é leitura humana, não comando.
+
+O restante foi conferido: repositório público, histórico sem segredo nem PDF, CI
+verde em `main`, contrato regenerado batendo com as rotas, cobertura dentro dos
+limites e documentação alinhada ao código.
