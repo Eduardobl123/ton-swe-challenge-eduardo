@@ -26,19 +26,50 @@ permissions:
 jobs:
   publicar:
     name: Provisiona e publica
-    runs-on: ubuntu-latest
+    # Mesma arquitetura da função. O artefato leva o binário nativo do argon2
+    # para linux/arm64, e a verificação sobe esse artefato no runtime oficial:
+    # em executor x86 as duas coisas passariam por emulação, e o que seria
+    # publicado deixaria de ser o que foi verificado.
+    runs-on: ubuntu-24.04-arm
     environment: ${{ inputs.ambiente }}
     # Sem a role configurada, o fluxo se declara indisponível em vez de falhar
     # no meio. Quem clona o repositório não tem a conta AWS de ninguém.
     if: vars.AWS_DEPLOY_ROLE_ARN != ''
     steps:
+      - name: O segredo do JWT está configurado
+        # Primeiro passo de propósito: o Terraform não tem default para
+        # `jwt_secret` e, num runner não interativo, pediria o valor e travaria
+        # até o timeout. Falhar aqui custa segundos e diz o que corrigir; falhar
+        # lá custa uma execução inteira e uma mensagem sobre entrada padrão.
+        #
+        # O valor entra por `env`, e não por interpolação na linha de comando:
+        # interpolado, ele apareceria no script gerado pelo runner.
+        env:
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          if [ "${#JWT_SECRET}" -lt 32 ]; then
+            echo "::error::Configure o secret JWT_SECRET no environment '${{ inputs.ambiente }}' com ao menos 32 caracteres. Gere com: openssl rand -base64 48"
+            exit 1
+          fi
+
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - run: npm run build
+
+      - name: Empacota a função
+        # O `terraform apply` consome `dist/lambda-package`, que só este script
+        # produz — `npm run build` gera o bundle e para aí. Ele já invoca o
+        # build, então não há passo separado.
+        run: npm run package:lambda
+
+      - name: O artefato sobe no runtime oficial
+        # Roda antes de tocar na AWS. Publicar um artefato que não carrega
+        # deixa a função quebrada em toda invocação, e o Terraform reporta
+        # sucesso mesmo assim: para ele, o deploy foi entregar o zip.
+        run: npm run verify:lambda
 
       - name: Credenciais temporárias
         # Federação por OIDC: nenhuma chave de acesso guardada como segredo.
@@ -50,14 +81,47 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v4
       - name: Provisiona
+        env:
+          # Sem default no Terraform, e é isso que se quer: um segredo com
+          # default vira o segredo de produção de quem esqueceu de trocá-lo.
+          TF_VAR_jwt_secret: ${{ secrets.JWT_SECRET }}
+          # Vazio desliga o Sentry, que é o comportamento certo para quem
+          # provisiona sem conta lá.
+          TF_VAR_sentry_dsn: ${{ secrets.SENTRY_DSN }}
+          # Sem isto a função sobe como "local" e o Sentry agrupa releases
+          # diferentes no mesmo balde. O SHA responde "qual código está lá".
+          TF_VAR_app_version: ${{ github.sha }}
         run: |
-          terraform -chdir=infra/envs/${{ inputs.ambiente }} init
-          terraform -chdir=infra/envs/${{ inputs.ambiente }} apply -auto-approve
+          terraform -chdir=infra/envs/${{ inputs.ambiente }} init -input=false
+          terraform -chdir=infra/envs/${{ inputs.ambiente }} apply -auto-approve -input=false
 
       - name: Carga inicial
         # Idempotente: repetir depois de uma falha no meio do caminho não
-        # duplica nem sobrescreve nada.
+        # duplica nada.
+        #
+        # O nome da tabela vem do output do Terraform, não de uma variável de
+        # repositório: duas fontes de verdade para o mesmo nome divergem no dia
+        # em que o prefixo mudar, e a carga iria para uma tabela que ninguém
+        # está lendo. O `JWT_SECRET` entra porque a validação de configuração
+        # exige o ambiente completo antes de montar o container — mesmo que a
+        # carga não assine nada.
         env:
-          TABLE_NAME: ${{ vars.TABLE_NAME }}
           PERSISTENCE: dynamodb
-        run: npm run db:seed
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: |
+          TABLE_NAME=$(terraform -chdir=infra/envs/${{ inputs.ambiente }} output -raw table_name)
+          export TABLE_NAME
+          npm run db:seed
+
+      - name: Onde a API respondeu
+        # Quem disparou o deploy precisa do endereço para conferir; sem isto ele
+        # sai de dentro do log do Terraform, à mão.
+        run: |
+          API=$(terraform -chdir=infra/envs/${{ inputs.ambiente }} output -raw api_url)
+          {
+            echo "## Publicado em \`${{ inputs.ambiente }}\`"
+            echo
+            echo "- API: ${API}"
+            echo "- Versão: \`${{ github.sha }}\` — confirme em \`${API}/health\`"
+            echo "- Prontidão: \`${API}/ready\` (200 prova que o IAM tem DescribeTable)"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -315,6 +315,12 @@ chave de acesso guardada como segredo: chave estática vaza, não expira e
 ninguém percebe quando é usada. Sem a role configurada nas variáveis do
 repositório, o fluxo se declara indisponível em vez de falhar no meio.
 
+Ele empacota e **verifica o artefato no runtime oficial antes de tocar na AWS**,
+num executor da mesma arquitetura da função, e publica com o SHA do commit em
+`APP_VERSION`. Quais secrets e variáveis o environment precisa está em
+[`infra/README.md`](infra/README.md#pelo-github-actions), junto com a razão de o
+deploy automatizado servir hoje ao provisionamento inicial e não à reaplicação.
+
 ### Rodando o mesmo que o CI roda
 
 ```bash
