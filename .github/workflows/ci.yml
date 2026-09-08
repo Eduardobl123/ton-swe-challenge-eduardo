@@ -22,7 +22,7 @@ jobs:
     name: Tipos, lint e formato
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           # A versão vem do .nvmrc, para que máquina e CI não divirjam.
@@ -42,7 +42,7 @@ jobs:
     name: Testes unitários e cobertura
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -62,7 +62,7 @@ jobs:
     name: Integração, ponta a ponta e cobertura consolidada
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -94,7 +94,7 @@ jobs:
     name: Contrato OpenAPI
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -114,7 +114,7 @@ jobs:
     # é publicado — inclusive o binário nativo do argon2.
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -146,7 +146,7 @@ jobs:
     # resultado aparece no resumo da execução e no agendamento diário abaixo.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -172,7 +172,7 @@ jobs:
     name: Infraestrutura
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Descobre os módulos
         id: modulos
         # `find` em vez de glob com `**`: a expansão recursiva do bash depende
