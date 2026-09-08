@@ -162,6 +162,30 @@ describe('User', () => {
       expect(depois.lockedUntil).toEqual(bloqueado.lockedUntil);
     });
 
+    it('não encurta um bloqueio mais longo já vigente', () => {
+      // O caso que a issue #24 descreve: duas tentativas simultâneas cruzam o
+      // limiar, a que contou mais falhas grava um bloqueio maior, e a outra
+      // chega depois calculando um menor. Tomar o instante mais distante faz o
+      // resultado independer da ordem de chegada.
+      const bloqueioLongo = new Date(AGORA.getTime() + 300 * SEGUNDO);
+      const usuario = criarUsuario({ failedLoginAttempts: 4, lockedUntil: bloqueioLongo });
+
+      const depois = usuario.recordFailedLogin(AGORA, policy);
+
+      // A política pediria apenas 30s para a quinta falha.
+      expect(depois.failedLoginAttempts).toBe(5);
+      expect(depois.lockedUntil).toEqual(bloqueioLongo);
+    });
+
+    it('avança o bloqueio quando o novo é mais longo que o vigente', () => {
+      const bloqueioCurto = new Date(AGORA.getTime() + 10 * SEGUNDO);
+      const usuario = criarUsuario({ failedLoginAttempts: 4, lockedUntil: bloqueioCurto });
+
+      const depois = usuario.recordFailedLogin(AGORA, policy);
+
+      expect(depois.lockedUntil).toEqual(new Date(AGORA.getTime() + 30 * SEGUNDO));
+    });
+
     it('não altera a instância original', () => {
       const original = criarUsuario();
       original.recordFailedLogin(AGORA, policy);
