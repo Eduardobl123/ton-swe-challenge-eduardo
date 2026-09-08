@@ -10,6 +10,26 @@ updates:
       # por pacote transformaria a revisão em ruído e ninguém leria nenhum.
       rotina:
         update-types: [minor, patch]
+    ignore:
+      # O ferramental de tipos acompanha o runtime, e não o último publicado.
+      #
+      # A função roda em `nodejs24.x`, o `.nvmrc` fixa 24.20.0 e o `engines`
+      # recusa 25. Tipar contra a API do Node 26 deixaria o `npm run typecheck`
+      # aprovar chamada que não existe em produção: o portão continuaria verde e
+      # a falha apareceria na invocação. Subir de major aqui é consequência de
+      # trocar o runtime, nunca a causa.
+      - dependency-name: '@types/node'
+        update-types: [version-update:semver-major]
+
+      # TypeScript 7 é a reescrita em Go, não um incremento.
+      #
+      # Hoje o bump sequer instala: `typescript-eslint` declara
+      # `typescript: >=4.8.4 <6.1.0`, e o `npm ci` morre em `ERESOLVE` antes de
+      # qualquer teste rodar. Quando a migração acontecer, ela revisa
+      # `eslint.config.js` e `tsconfig.json` junto — trabalho de uma mudança
+      # própria, e não de um pull request automático reaberto toda semana.
+      - dependency-name: 'typescript'
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: github-actions
     directory: /
