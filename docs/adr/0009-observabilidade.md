@@ -84,3 +84,33 @@ perder o erro justamente quando ele acontece.
 **Mitigação.** Usar o wrapper oficial do Sentry para ambientes sem servidor, que
 cuida do descarregamento, e manter a taxa de amostragem de rastreamento baixa
 para não pagar latência nem custo desnecessários.
+
+## Atualização — uma inicialização por processo (issue #30)
+
+A decisão acima continua valendo. O que segue corrige como ela estava
+implementada.
+
+O Sentry era inicializado em dois lugares: o container (`@sentry/node`, com
+`beforeSend` de limpeza) e o entrypoint da Lambda (`@sentry/aws-serverless`, sem
+ele). Cada um tinha razão própria — o primeiro garantia a limpeza, o segundo o
+descarregamento dos eventos antes de a invocação congelar —, e nada obrigava os
+dois a convergirem.
+
+Os dois pacotes compartilham o mesmo registro global, então o segundo `init`
+substituía o cliente do primeiro. No caminho publicado o cliente vigente era o da
+Lambda, e ele não aplicava limpeza alguma: cabeçalho `Authorization`, cookie e
+corpo da requisição seguiam íntegros para o Sentry. A mitigação descrita acima
+("campos sensíveis não vazam") valia para o log, mas não para o relatório de erro
+em produção. O comportamento foi confirmado antes da correção, capturando o
+envelope emitido com um transporte falso.
+
+O desenho passou a ser: as opções compartilhadas vivem em um lugar só
+(`sentryOptions`), cada entrypoint inicializa o SDK adequado ao seu runtime
+exatamente uma vez, e o container apenas escolhe a implementação da porta
+`ErrorReporter` — não configura mais fornecedor nenhum. Na Lambda o `init`
+acontece antes da montagem do container, para que uma falha na própria montagem
+ainda seja relatada.
+
+Consequência colateral: `scripts/seed.ts`, que também monta o container, passa a
+rodar sem Sentry. É o correto para um script de carga — a falha pertence ao
+terminal de quem o executou.

@@ -3,7 +3,7 @@ import * as SentryLambda from '@sentry/aws-serverless';
 import { buildApp } from '../infrastructure/http/app';
 import { loadConfig } from '../infrastructure/config/env';
 import { resolveSecrets } from '../infrastructure/config/secrets';
-import { PinoLogger } from '../infrastructure/observability';
+import { PinoLogger, sentryOptions } from '../infrastructure/observability';
 import { buildContainer } from './container';
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2, Context } from 'aws-lambda';
 
@@ -45,21 +45,27 @@ const logger = new PinoLogger({
   pretty: false,
 });
 
-const container = buildContainer(config, logger);
+// Antes do container, e uma vez só.
+//
+// Antes, porque assim uma falha na própria montagem do container já é relatada;
+// depois, ela morreria em silêncio no carregamento do módulo.
+//
+// Uma vez só, porque os dois SDKs do Sentry compartilham o mesmo registro
+// global: um segundo `init` substitui o cliente do primeiro. Enquanto o
+// container também inicializava, era esta chamada que prevalecia — e ela não
+// levava o `beforeSend`, de modo que cabeçalho e corpo da requisição chegavam
+// ao Sentry sem limpeza (issue #30).
+//
+// O SDK sem servidor é o que garante o descarregamento dos eventos antes de a
+// invocação terminar. Sem ele, o processo congela com o relatório ainda na fila
+// e o erro se perde exatamente quando acontece.
+const sentry = sentryOptions(config);
 
-if (config.observability.sentryDsn !== undefined) {
-  // A inicialização específica para ambiente sem servidor é o que garante o
-  // descarregamento dos eventos antes de a invocação terminar. Sem ela, o
-  // processo congela com o relatório ainda na fila e o erro se perde
-  // exatamente quando acontece.
-  SentryLambda.init({
-    dsn: config.observability.sentryDsn,
-    environment: config.nodeEnv,
-    release: config.version,
-    tracesSampleRate: config.observability.sentryTracesSampleRate,
-    sendDefaultPii: false,
-  });
+if (sentry !== undefined) {
+  SentryLambda.init(sentry);
 }
+
+const container = buildContainer(config, logger);
 
 /**
  * O adaptador é criado uma vez, e não a cada invocação.
