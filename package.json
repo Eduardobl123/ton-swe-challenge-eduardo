@@ -1,6 +1,6 @@
 {
   "name": "ton-swe-challenge-api",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "API de autenticacao e listagem paginada de produtos — SWE Challenge Ton/Stone",
   "private": true,
   "type": "module",
