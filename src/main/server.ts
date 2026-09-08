@@ -1,6 +1,7 @@
 import { ValidationError } from '../domain/errors';
 import { EnvValidationError, loadConfig } from '../infrastructure/config/env';
-import { PinoLogger } from '../infrastructure/observability';
+import * as SentryNode from '@sentry/node';
+import { PinoLogger, sentryOptions } from '../infrastructure/observability';
 import { buildApp } from '../infrastructure/http/app';
 import { buildContainer, type Container } from './container';
 import { seedForDevelopment } from './dev-seed';
@@ -18,6 +19,17 @@ function main(): void {
 
   try {
     const config = loadConfig();
+
+    // Aqui o SDK é o de processo longo: o servidor não congela entre
+    // requisições, então não há fila a descarregar antes do fim de uma
+    // invocação. A inicialização vive no entrypoint, e não no container, para
+    // que exista exatamente uma por processo (issue #30).
+    const sentry = sentryOptions(config);
+
+    if (sentry !== undefined) {
+      SentryNode.init(sentry);
+    }
+
     container = buildContainer(
       config,
       new PinoLogger({

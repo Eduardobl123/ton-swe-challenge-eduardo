@@ -317,17 +317,11 @@ interface Observability {
  * stdout.
  */
 function buildObservability(config: AppConfig, logger: Logger, clock: Clock): Observability {
-  const { sentryDsn, sentryTracesSampleRate } = config.observability;
+  const { sentryDsn } = config.observability;
 
-  if (sentryDsn !== undefined) {
-    SentryErrorReporter.initialise({
-      dsn: sentryDsn,
-      environment: config.nodeEnv,
-      release: config.version,
-      tracesSampleRate: sentryTracesSampleRate,
-    });
-  }
-
+  // O SDK é inicializado pelo entrypoint, não aqui: só ele sabe se a aplicação
+  // roda em processo longo ou em invocação que congela, e portanto qual pacote
+  // do Sentry usar. O container apenas escolhe a implementação da porta.
   return {
     errorReporter:
       sentryDsn === undefined ? new NoopErrorReporter() : new SentryErrorReporter(logger),

@@ -238,7 +238,7 @@ primeira requisição. A referência completa e comentada está em
 ## Testes
 
 ```bash
-npm test                   # 538 unitários — rápidos, sem Docker
+npm test                   # 544 unitários — rápidos, sem Docker
 npm run test:integration   # 49 contra o DynamoDB Local
 npm run test:e2e           # 26 jornadas sobre o sistema montado
 npm run test:coverage:all  # as três suítes com o gate consolidado (pede docker compose up)
@@ -247,7 +247,7 @@ npm run verify:lambda      # o artefato publicado, no runtime oficial da AWS
 
 | Camada        | Testes | O que só ela prova                                                                        |
 | ------------- | -----: | ----------------------------------------------------------------------------------------- |
-| Unitários     |    538 | Cada regra isolada, incluindo os ramos que exigem entrada difícil de montar               |
+| Unitários     |    544 | Cada regra isolada, incluindo os ramos que exigem entrada difícil de montar               |
 | Integração    |     49 | O que duplo nenhum prova: escrita condicionada, incremento atômico, transação             |
 | Ponta a ponta |     26 | A continuidade — token autenticando a chamada seguinte, cursor buscando a página seguinte |
 | Artefato      |      2 | Que o pacote publicado sobe no runtime da AWS e responde de verdade                       |

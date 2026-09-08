@@ -2,14 +2,6 @@ import * as Sentry from '@sentry/node';
 import type { ErrorEvent } from '@sentry/node';
 import type { ErrorContext, ErrorReporter, Logger } from '../../domain/ports';
 
-export interface SentryOptions {
-  readonly dsn: string;
-  readonly environment: string;
-  /** Versão da aplicação, que agrupa os eventos por implantação. */
-  readonly release: string;
-  readonly tracesSampleRate: number;
-}
-
 /**
  * Encaminha falhas imprevistas para o Sentry.
  *
@@ -39,21 +31,16 @@ export function scrub(event: ErrorEvent): ErrorEvent {
   return event;
 }
 
+/**
+ * Relata pelo cliente global, sem configurá-lo.
+ *
+ * Quem inicializa o SDK é o entrypoint, que é o único que sabe onde a aplicação
+ * roda — processo longo ou invocação que congela. Este adaptador só publica no
+ * cliente vigente. Enquanto ele também inicializava, o container acabava
+ * disputando a configuração com o entrypoint da Lambda (issue #30).
+ */
 export class SentryErrorReporter implements ErrorReporter {
   constructor(private readonly logger: Logger) {}
-
-  public static initialise(options: SentryOptions): void {
-    Sentry.init({
-      dsn: options.dsn,
-      environment: options.environment,
-      release: options.release,
-      tracesSampleRate: options.tracesSampleRate,
-      // Sem coleta automática de dado pessoal: cabeçalho, corpo e endereço só
-      // entram no evento se alguém colocar de propósito.
-      sendDefaultPii: false,
-      beforeSend: scrub,
-    });
-  }
 
   public capture(error: unknown, context: ErrorContext): void {
     try {

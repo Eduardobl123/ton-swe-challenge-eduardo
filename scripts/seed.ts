@@ -37,6 +37,10 @@ async function main(): Promise<void> {
     version: config.version,
     pretty: !config.isProduction,
   });
+  // Sem Sentry, de propósito: quem inicializa o SDK é o entrypoint da aplicação
+  // (issue #30), e um script de carga não é um. Falha aqui aparece no terminal
+  // de quem o rodou, que é onde ela precisa aparecer — encaminhá-la ao painel de
+  // erros de produção só somaria ruído.
   const container = buildContainer(config, logger);
   const { users, products, passwordHasher, clock } = container.seeding;
 

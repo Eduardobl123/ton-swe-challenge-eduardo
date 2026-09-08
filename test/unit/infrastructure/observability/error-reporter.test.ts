@@ -94,15 +94,11 @@ describe('SentryErrorReporter', () => {
     expect(logger.find('observability.report_failed')?.fields.reason).toBe('desconhecido');
   });
 
-  it('a inicialização não contata o serviço', () => {
-    expect(() =>
-      SentryErrorReporter.initialise({
-        dsn: 'https://exemplo@o0.ingest.sentry.io/0',
-        environment: 'test',
-        release: 'abc1234',
-        tracesSampleRate: 0,
-      }),
-    ).not.toThrow();
+  it('não inicializa o SDK', () => {
+    // Configurar o cliente é do entrypoint. Enquanto era também do adaptador, o
+    // `init` da Lambda substituía o do container e o scrubbing sumia do caminho
+    // publicado (issue #30). Ver `sentry-options.test.ts`.
+    expect('initialise' in SentryErrorReporter).toBe(false);
   });
 });
 
